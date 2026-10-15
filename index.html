@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>浸水地図 v0.1</title>
+    <title>浸水地図</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -19,7 +19,7 @@
             border-bottom: 1px solid #ccc;
             flex-wrap: wrap;
         }
-        #map { flex-grow: 1; width: 100%; }
+        #map { flex-grow: 1; width: 100%; position: relative; }
         
         button {
             padding: 6px 12px;
@@ -37,6 +37,12 @@
         
         #btnGps { background-color: #28a745; }
         #btnGps:hover { background-color: #218838; }
+
+        /* 追加: 浸水判定ボタンのスタイル */
+        #btnAnalyze { background-color: #dc3545; }
+        #btnAnalyze:hover { background-color: #c82333; }
+        #btnClear { background-color: #6c757d; display: none; }
+        #btnClear:hover { background-color: #5a6268; }
 
         select, input[type="text"] {
             padding: 5px;
@@ -89,6 +95,38 @@
             border: 1px solid #999;
             border-radius: 2px;
         }
+
+        /* 追加: A3(1/5000)赤枠のスタイル */
+        #targetFrame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid rgba(220, 53, 69, 0.8);
+            box-sizing: border-box;
+            pointer-events: none; /* マウスイベントを地図に通過させる */
+            z-index: 1000;
+            box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.3); /* 枠外を少し暗くするオプション */
+        }
+        /* 十字カーソル */
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 1001;
+        }
+        .crosshair::before, .crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(220, 53, 69, 0.8);
+            z-index: 1001;
+        }
+        .crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        .crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
     </style>
 </head>
 <body>
@@ -152,11 +190,18 @@
 
     <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
     <button onclick="downloadMapImageWithExif()">地図保存</button>
+    
+    <!-- 追加: 浸水判定ボタン -->
+    <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
+    <button id="btnClear" onclick="clearAnalysis()">✖ クリア</button>
 
     <div id="obsDateDisplay">🛰️ SAR観測日時: 取得中...</div>
 </div>
 
-<div id="map"></div>
+<div id="map">
+    <div id="targetFrame"></div>
+    <div class="crosshair"></div>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-simple-map-screenshoter"></script>
@@ -171,12 +216,11 @@
 
     let startLat = 36.065;
     let startLon = 136.221;
-    let startZoom = 13; // 浸水は広域で見ることが多いため少し引いたズームに設定
+    let startZoom = 15; 
 
     if (latParam && lonParam && !isNaN(latParam) && !isNaN(lonParam)) {
         startLat = parseFloat(latParam);
         startLon = parseFloat(lonParam);
-        startZoom = 15; 
     }
 
     const map = L.map('map', { preferCanvas: true }).setView([startLat, startLon], startZoom);
@@ -194,13 +238,81 @@
         attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
     });
 
-    // 初期ベースマップを「淡色地図」に設定（浸水域の赤や青が見やすいため）
     pale.addTo(map);
 
+    const baseMaps = {
+        "淡色地図（水域が見やすい）": pale,
+        "標準地図（地理院）": std,
+        "最新空中写真": photo,
+        "陰影起伏図（地形把握）": hillshade,
+        "OpenStreetMap（世界地図）": osm
+    };
+    L.control.layers(baseMaps, null, { collapsed: false }).addTo(map);
+
+
     // ==========================================
-    // ★コアエンジン: 浸水域を抽出する高度なEvalscript
-    // 同一軌道(パス)のデータを比較し、水面の変化だけを捉える
+    // 凡例（Legend）の追加
     // ==========================================
+    const legend = L.control({position: 'bottomright'});
+    legend.onAdd = function (map) {
+        const div = L.DomUtil.create('div', 'info legend');
+        L.DomEvent.disableClickPropagation(div);
+        let html = `
+            <h4>💧 浸水域判定マップ</h4>
+            <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たに水で覆われた場所 (浸水等)<br>
+            <i style="background: rgba(0, 0, 255, 0.5)"></i> いつもと変わらない水域 (河川・湖)<br>
+            <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
+                ※赤枠を合わせて「浸水判定」ボタンを押してください。
+            </div>
+        `;
+        div.innerHTML = html;
+        return div;
+    };
+    legend.addTo(map);
+
+    // ==========================================
+    // ★ A3赤枠のサイズ調整処理
+    // 1/5000スケールでA3(420mm x 297mm)相当のピクセル数を計算
+    // ==========================================
+    function updateFrameSize() {
+        const frame = document.getElementById('targetFrame');
+        const zoom = map.getZoom();
+        
+        // ズーム15を基準とする (1ピクセルあたりのメートル数は緯度によって変わるが概算)
+        // A3(1/5000)は実測で 2100m x 1485m
+        // ズーム15の時、1ピクセルは約4.77m (緯度36度付近)
+        // 2100m / 4.77m = 約440px
+        // 1485m / 4.77m = 約311px
+        
+        const baseWidthPx = 440;
+        const baseHeightPx = 311;
+        const baseZoom = 15;
+        
+        const scale = Math.pow(2, zoom - baseZoom);
+        
+        frame.style.width = (baseWidthPx * scale) + 'px';
+        frame.style.height = (baseHeightPx * scale) + 'px';
+        
+        // ズームが低すぎると枠が小さくなりすぎるので非表示
+        if (zoom < 12) {
+             frame.style.display = 'none';
+        } else {
+             frame.style.display = 'block';
+        }
+    }
+    
+    map.on('zoomend', updateFrameSize);
+    updateFrameSize();
+
+    // ==========================================
+    // ★ 浸水判定処理 (指定エリアのみ)
+    // ==========================================
+    const today = new Date();
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(today.getMonth() - 1); 
+    const formatDate = (d) => d.toISOString().split('T')[0];
+    const timeRange = `${formatDate(oneMonthAgo)}/${formatDate(today)}`;
+
     const evalscript = `//VERSION=3
     function setup() {
         return {
@@ -216,7 +328,6 @@
         var latestScene = scenes[0];
         var past = null;
         
-        // 直近のデータと同じ軌道（Relative Orbit）を飛んだ1ヶ月前のデータを探索してノイズを除去
         for (var i = samples.length - 1; i > 0; i--) {
             if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId) {
                 past = samples[i];
@@ -224,88 +335,88 @@
             }
         }
         if (!past) {
-            past = samples[samples.length - 1]; // 同一軌道がない場合は一番古いものを代用
+            past = samples[samples.length - 1]; 
         }
         
-        var thresh = 0.025; // 水と判定するレーダー反射強度の閾値（約-16dB）
+        var thresh = 0.025; 
         
         if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
         
         var waterLatest = latest.VV < thresh;
         var waterPast = past.VV < thresh;
         
-        if (waterLatest && waterPast) return [0, 0, 1, 0.5]; // ずっと水域（川・湖） = 青
-        if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; // 新たに水域になった（浸水） = 赤
+        if (waterLatest && waterPast) return [0, 0, 1, 0.5]; 
+        if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; 
         
         return [0,0,0,0];
     }`;
 
-    const b64Evalscript = btoa(evalscript); // Base64にエンコードしてURLに渡す準備
+    const b64Evalscript = btoa(evalscript);
+    let floodLayer = null;
 
-    // 期間設定（直近 〜 1ヶ月前）
-    const today = new Date();
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(today.getMonth() - 1); 
-    const formatDate = (d) => d.toISOString().split('T')[0];
-    const timeRange = `${formatDate(oneMonthAgo)}/${formatDate(today)}`;
+    function analyzeFlood() {
+        // すでにあれば消す
+        if (floodLayer) {
+            map.removeLayer(floodLayer);
+        }
 
-    const floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
-        layers: 'SAR-CHANGE', // 既存のレイヤー設定を利用
-        format: 'image/png',
-        transparent: true,
-        TIME: timeRange,
-        EVALSCRIPT: b64Evalscript, // カスタムスクリプトを強制的に上書き適用
-        maxZoom: 16,
-        attribution: '&copy; Copernicus Sentinel data'
-    });
+        // 赤枠のピクセル座標から、地図上の緯度経度境界（Bbox）を計算
+        const frame = document.getElementById('targetFrame');
+        const rect = frame.getBoundingClientRect();
+        
+        const nw = map.containerPointToLatLng([rect.left, rect.top]);
+        const se = map.containerPointToLatLng([rect.right, rect.bottom]);
+        const bounds = L.latLngBounds(nw, se);
 
-    const baseMaps = {
-        "淡色地図（水域が見やすい）": pale,
-        "標準地図（地理院）": std,
-        "最新空中写真": photo,
-        "陰影起伏図（地形把握）": hillshade,
-        "OpenStreetMap（世界地図）": osm
-    };
+        document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
+        
+        // WMSレイヤーを作成。表示領域(bounds)を指定することで処理を限定
+        floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
+            layers: 'SAR-CHANGE', 
+            format: 'image/png',
+            transparent: true,
+            TIME: timeRange,
+            EVALSCRIPT: b64Evalscript, 
+            bounds: bounds, // ★ここがミソ。赤枠内しかリクエストしない
+            maxZoom: 18,
+            attribution: '&copy; Copernicus Sentinel data'
+        });
 
-    const overlayMaps = {
-        "🚨 浸水エリア抽出 (直近 vs 1ヶ月前)": floodLayer
-    };
+        floodLayer.addTo(map);
 
-    L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
+        floodLayer.on('load', function() {
+             document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
+             document.getElementById('btnClear').style.display = "inline-block";
+        });
+        floodLayer.on('error', function() {
+             document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
+             alert('解析に失敗しました。');
+        });
+        
+        updateObservationDate(bounds);
+    }
+
+    function clearAnalysis() {
+        if (floodLayer) {
+            map.removeLayer(floodLayer);
+            floodLayer = null;
+        }
+        document.getElementById('btnClear').style.display = "none";
+        document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 未取得`;
+    }
 
     // ==========================================
-    // 凡例（Legend）の追加
+    // 最新観測日時の取得機能 (赤枠の範囲で検索)
     // ==========================================
-    const legend = L.control({position: 'bottomright'});
-    legend.onAdd = function (map) {
-        const div = L.DomUtil.create('div', 'info legend');
-        L.DomEvent.disableClickPropagation(div);
-        let html = `
-            <h4>💧 浸水域判定マップ</h4>
-            <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たに水で覆われた場所 (浸水等)<br>
-            <i style="background: rgba(0, 0, 255, 0.5)"></i> いつもと変わらない水域 (河川・湖)<br>
-            <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
-                ※SAR衛星(Sentinel-1)の電波反射強度を解析。<br>
-                ※山間部の急斜面やビル街の影がノイズとして<br>赤く表示される場合があります（平野部推奨）。
-            </div>
-        `;
-        div.innerHTML = html;
-        return div;
-    };
-    legend.addTo(map);
-
-    // ==========================================
-    // ★最新観測日時の取得機能 (CDSE STAC API)
-    // ==========================================
-    async function updateObservationDate() {
+    async function updateObservationDate(bounds) {
+        if (!bounds) return;
+        
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
         
-        const bounds = map.getBounds();
         const startStr = oneMonthAgo.toISOString().split('.')[0] + 'Z';
         const endStr = today.toISOString().split('.')[0] + 'Z';
         
         try {
-            // 画面に映っている範囲で最も新しいSAR画像を検索
             const res = await fetch('https://catalogue.dataspace.copernicus.eu/stac/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -320,7 +431,6 @@
             const data = await res.json();
             if (data.features && data.features.length > 0) {
                 const dt = new Date(data.features[0].properties.datetime);
-                // 日本時間にフォーマット
                 const fmt = `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日 ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: ${fmt}`;
             } else {
@@ -331,9 +441,6 @@
         }
     }
 
-    // 地図の移動が終わるたびに観測日時を再取得
-    map.on('moveend', updateObservationDate);
-    updateObservationDate(); // 初回実行
 
     // ==========================================
     // UIコントロール用関数群
@@ -360,7 +467,6 @@
         if (event.key === 'Enter') jumpToCoordinates();
     }
 
-    // GPS現在地取得機能
     let locationMarker = null;
     function getLocation() {
         map.locate({setView: true, maxZoom: 15});
@@ -375,9 +481,8 @@
         alert("GPS現在地を取得できませんでした。スマホの位置情報設定をご確認ください。");
     });
 
-    // EXIF付き地図保存機能（そのまま継承）
     const screenshoter = L.simpleMapScreenshoter({
-        hideElementsWithSelectors: [".leaflet-control-container", "#controls", ".info.legend"],
+        hideElementsWithSelectors: [".leaflet-control-container", "#controls", ".info.legend", "#targetFrame"],
         mimeType: "image/jpeg"
     }).addTo(map);
 
@@ -397,7 +502,7 @@
             else if(layer === osm) activeLayerName = "osm";
         });
         
-        if(map.hasLayer(floodLayer)) {
+        if(floodLayer && map.hasLayer(floodLayer)) {
             activeLayerName = `flood_${activeLayerName}`;
         }
 
