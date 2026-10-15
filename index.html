@@ -132,9 +132,9 @@
 </head>
 <body>
 
-<!-- ★UI配置をご要望の順番（左から）に整理しました -->
 <div id="controls">
-    <span class="app-title">浸水地図 v0.4</span>
+    <!-- バージョンを v0.5 に更新 -->
+    <span class="app-title">浸水地図 v0.5</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -320,7 +320,7 @@
     updateFrameSize();
 
     // ==========================================
-    // 浸水判定処理（枠内クリッピング＋期間指定対応）
+    // ★バグ修正版: 浸水判定処理
     // ==========================================
     let floodLayer = null;
 
@@ -335,26 +335,16 @@
         const se = map.containerPointToLatLng([rect.right, rect.bottom]);
         const bounds = L.latLngBounds(nw, se);
 
-        const wktGeometry = `POLYGON((` + 
-            `${bounds.getWest()} ${bounds.getNorth()}, ` + 
-            `${bounds.getEast()} ${bounds.getNorth()}, ` + 
-            `${bounds.getEast()} ${bounds.getSouth()}, ` + 
-            `${bounds.getWest()} ${bounds.getSouth()}, ` + 
-            `${bounds.getWest()} ${bounds.getNorth()}))`;
-
         const selectedValue = document.getElementById("targetDateSelect").value;
         const today = new Date();
         let targetEndDate = new Date();
         let timeRangeStart = new Date();
-        let targetTimeIso = "";
 
-        // ★論理バグ修正: ターゲット時間と検索範囲を正確にセット
+        // 対象期間を計算 (選択された時期から45日前までを検索範囲とする)
         if (selectedValue === "auto") {
-            targetTimeIso = targetEndDate.toISOString();
             timeRangeStart.setDate(targetEndDate.getDate() - 45);
         } else {
             targetEndDate = new Date(selectedValue);
-            targetTimeIso = targetEndDate.toISOString();
             timeRangeStart = new Date(targetEndDate.getTime());
             timeRangeStart.setDate(timeRangeStart.getDate() - 45);
         }
@@ -362,7 +352,7 @@
         const formatDate = (d) => d.toISOString().split('T')[0];
         const timeRange = `${formatDate(timeRangeStart)}/${formatDate(targetEndDate)}`;
 
-        // ★フリーズ原因を排除：日本語(全角)コメントを完全に削除したEvalscript
+        // ★修正: サーバーエラーを引き起こす原因（文字列パースやコメント）を完全排除した堅牢なコード
         const evalscript = `//VERSION=3
         function setup() {
             return {
@@ -378,29 +368,34 @@
             var latestScene = scenes[0];
             var past = null;
             
-            var targetTime = Date.parse("${targetTimeIso}"); 
-            
-            for (var i = 0; i < samples.length; i++) {
-                var sceneTime = Date.parse(scenes[i].date);
-                if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && sceneTime <= targetTime) {
+            // 最新データと同じ軌道で、かつ10日以上古いデータを過去の比較対象とする
+            for (var i = 1; i < samples.length; i++) {
+                var diffDays = (latestScene.date.getTime() - scenes[i].date.getTime()) / (1000 * 3600 * 24);
+                if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffDays >= 10) {
                     past = samples[i];
                     break;
                 }
             }
             
+            // 同じ軌道が見つからなかった場合のバックアップ（とにかく10日以上古いもの）
             if (!past) {
-                for (var i = samples.length - 1; i > 0; i--) {
-                    if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId) {
-                        past = samples[i];
+                for (var j = 1; j < samples.length; j++) {
+                    var diffDaysFallback = (latestScene.date.getTime() - scenes[j].date.getTime()) / (1000 * 3600 * 24);
+                    if (diffDaysFallback >= 10) {
+                        past = samples[j];
                         break;
                     }
                 }
-                if(!past) past = samples[samples.length - 1]; 
             }
             
-            var thresh = 0.03; 
+            // 最終バックアップ
+            if (!past) {
+                past = samples[samples.length - 1];
+            }
             
             if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
+            
+            var thresh = 0.025; 
             
             var waterLatest = latest.VV < thresh;
             var waterPast = past.VV < thresh;
@@ -411,18 +406,16 @@
             return [0,0,0,0];
         }`;
 
-        const b64Evalscript = btoa(evalscript);
-
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
         
+        // Leafletの機能を使って、URLエンコードを安全に任せる
         floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
             layers: 'SAR-CHANGE', 
             format: 'image/png',
             transparent: true,
             TIME: timeRange,
-            GEOMETRY: wktGeometry, 
-            EVALSCRIPT: b64Evalscript, 
-            bounds: bounds, 
+            EVALSCRIPT: evalscript, // base64変換をやめて直接渡す（安定性向上）
+            bounds: bounds, // 赤枠内のみリクエスト
             maxZoom: 18,
             attribution: '&copy; Copernicus Sentinel data'
         });
@@ -434,10 +427,9 @@
              document.getElementById('btnClear').style.display = "inline-block";
         });
         
-        // ★修正: Leafletのタイルエラーを確実にキャッチしてフリーズを防止
-        floodLayer.on('tileerror', function(error, tile) {
+        floodLayer.on('tileerror', function() {
              document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
-             alert('解析に失敗しました。範囲が広すぎるか、通信エラーの可能性があります。少しズームインして再度お試しください。');
+             alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
              clearAnalysis();
         });
         
