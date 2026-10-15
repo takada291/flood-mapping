@@ -7,6 +7,14 @@
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-WXBP6CPKLP"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-WXBP6CPKLP');
+    </script>
+    
     <style>
         body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background: #fff; }
         #controls {
@@ -21,6 +29,14 @@
         }
         #map { flex-grow: 1; width: 100%; position: relative; }
         
+        .app-title {
+            font-weight: bold;
+            font-size: 14px;
+            color: #004d26;
+            margin-right: 4px;
+            white-space: nowrap;
+        }
+
         button {
             padding: 6px 12px;
             font-size: 13px;
@@ -38,7 +54,6 @@
         #btnGps { background-color: #28a745; }
         #btnGps:hover { background-color: #218838; }
 
-        /* 追加: 浸水判定ボタンのスタイル */
         #btnAnalyze { background-color: #dc3545; }
         #btnAnalyze:hover { background-color: #c82333; }
         #btnClear { background-color: #6c757d; display: none; }
@@ -49,18 +64,6 @@
             font-size: 13px;
             border-radius: 4px;
             border: 1px solid #ccc;
-        }
-        
-        .filter-group {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            background: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-            font-size: 13px;
-            font-weight: bold;
         }
         
         #obsDateDisplay {
@@ -96,7 +99,6 @@
             border-radius: 2px;
         }
 
-        /* 追加: A3(1/5000)赤枠のスタイル */
         #targetFrame {
             position: absolute;
             top: 50%;
@@ -104,11 +106,10 @@
             transform: translate(-50%, -50%);
             border: 3px solid rgba(220, 53, 69, 0.8);
             box-sizing: border-box;
-            pointer-events: none; /* マウスイベントを地図に通過させる */
+            pointer-events: none; 
             z-index: 1000;
-            box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.3); /* 枠外を少し暗くするオプション */
+            box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.3); 
         }
-        /* 十字カーソル */
         .crosshair {
             position: absolute;
             top: 50%;
@@ -131,7 +132,10 @@
 </head>
 <body>
 
+<!-- ★ご要望通りのUI配置に変更 -->
 <div id="controls">
+    <span class="app-title">浸水地図 v0.3</span>
+
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
         <option value="40.824,140.740">青森県</option>
@@ -182,17 +186,15 @@
         <option value="26.212,127.681">沖縄県</option>
     </select>
     
-    <div class="filter-group">
-        <span>📍</span>
-        <input type="text" id="latLonInput" placeholder="緯度, 経度" onkeypress="handleLatLonEnter(event)">
-        <button onclick="jumpToCoordinates()">移動</button>
-    </div>
-
-    <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
-    <button onclick="downloadMapImageWithExif()">地図保存</button>
+    <input type="text" id="latLonInput" placeholder="緯度, 経度" onkeypress="handleLatLonEnter(event)" style="width: 110px;">
     
-    <!-- 追加: 浸水判定ボタン -->
+    <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
+
+    <!-- ★新規追加: 過去半年間の比較時期リスト -->
+    <select id="pastDateSelect"></select>
+
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
+    <button onclick="downloadMapImageWithExif()">地図保存</button>
     <button id="btnClear" onclick="clearAnalysis()">✖ クリア</button>
 
     <div id="obsDateDisplay">🛰️ SAR観測日時: 取得中...</div>
@@ -227,7 +229,7 @@
     L.control.scale({ imperial: false, metric: true, position: 'bottomleft' }).addTo(map);
 
     // ==========================================
-    // ベースマップ群の設定
+    // ベースマップ設定
     // ==========================================
     const opt = { attribution: '地理院タイル', crossOrigin: "anonymous", maxZoom: 18 };
     const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', opt);
@@ -249,10 +251,6 @@
     };
     L.control.layers(baseMaps, null, { collapsed: false }).addTo(map);
 
-
-    // ==========================================
-    // 凡例（Legend）の追加
-    // ==========================================
     const legend = L.control({position: 'bottomright'});
     legend.onAdd = function (map) {
         const div = L.DomUtil.create('div', 'info legend');
@@ -262,7 +260,8 @@
             <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たに水で覆われた場所 (浸水等)<br>
             <i style="background: rgba(0, 0, 255, 0.5)"></i> いつもと変わらない水域 (河川・湖)<br>
             <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
-                ※赤枠を合わせて「浸水判定」ボタンを押してください。
+                ※赤枠を合わせて「浸水判定」ボタンを押してください。<br>
+                ※ビル街・山間部はノイズが出やすいためご注意ください。
             </div>
         `;
         div.innerHTML = html;
@@ -271,113 +270,160 @@
     legend.addTo(map);
 
     // ==========================================
-    // ★ A3赤枠のサイズ調整処理
-    // 1/5000スケールでA3(420mm x 297mm)相当のピクセル数を計算
+    // 過去6ヶ月分の期間リストを自動生成
     // ==========================================
+    function populateDateSelect() {
+        const select = document.getElementById("pastDateSelect");
+        const today = new Date();
+        
+        let optAuto = document.createElement("option");
+        optAuto.value = "auto";
+        optAuto.text = "比較対象: 約1ヶ月前 (標準)";
+        select.add(optAuto);
+
+        for (let i = 0; i < 6; i++) {
+            let d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            let year = d.getFullYear();
+            let month = d.getMonth() + 1;
+            
+            // 後半 (その月の末日をセット)
+            let optLate = document.createElement("option");
+            let lastDay = new Date(year, month, 0).getDate();
+            optLate.value = `${year}-${String(month).padStart(2,'0')}-${lastDay}T23:59:59Z`;
+            optLate.text = `比較対象: ${year}年${month}月後半`;
+            select.add(optLate);
+
+            // 前半 (その月の15日をセット)
+            let optEarly = document.createElement("option");
+            optEarly.value = `${year}-${String(month).padStart(2,'0')}-15T23:59:59Z`;
+            optEarly.text = `比較対象: ${year}年${month}月前半`;
+            select.add(optEarly);
+        }
+    }
+    populateDateSelect();
+
     function updateFrameSize() {
         const frame = document.getElementById('targetFrame');
         const zoom = map.getZoom();
-        
-        // ズーム15を基準とする (1ピクセルあたりのメートル数は緯度によって変わるが概算)
-        // A3(1/5000)は実測で 2100m x 1485m
-        // ズーム15の時、1ピクセルは約4.77m (緯度36度付近)
-        // 2100m / 4.77m = 約440px
-        // 1485m / 4.77m = 約311px
-        
         const baseWidthPx = 440;
         const baseHeightPx = 311;
         const baseZoom = 15;
-        
         const scale = Math.pow(2, zoom - baseZoom);
         
         frame.style.width = (baseWidthPx * scale) + 'px';
         frame.style.height = (baseHeightPx * scale) + 'px';
         
-        // ズームが低すぎると枠が小さくなりすぎるので非表示
         if (zoom < 12) {
              frame.style.display = 'none';
         } else {
              frame.style.display = 'block';
         }
     }
-    
     map.on('zoomend', updateFrameSize);
     updateFrameSize();
 
     // ==========================================
-    // ★ 浸水判定処理 (指定エリアのみ)
+    // 浸水判定処理（枠内クリッピング＋期間指定対応）
     // ==========================================
-    const today = new Date();
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(today.getMonth() - 1); 
-    const formatDate = (d) => d.toISOString().split('T')[0];
-    const timeRange = `${formatDate(oneMonthAgo)}/${formatDate(today)}`;
-
-    const evalscript = `//VERSION=3
-    function setup() {
-        return {
-            input: ["VV", "dataMask"],
-            output: { bands: 4 },
-            mosaicking: "ORBIT"
-        };
-    }
-    function evaluatePixel(samples, scenes) {
-        if (samples.length < 2) return [0,0,0,0];
-        
-        var latest = samples[0];
-        var latestScene = scenes[0];
-        var past = null;
-        
-        for (var i = samples.length - 1; i > 0; i--) {
-            if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId) {
-                past = samples[i];
-                break;
-            }
-        }
-        if (!past) {
-            past = samples[samples.length - 1]; 
-        }
-        
-        var thresh = 0.025; 
-        
-        if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
-        
-        var waterLatest = latest.VV < thresh;
-        var waterPast = past.VV < thresh;
-        
-        if (waterLatest && waterPast) return [0, 0, 1, 0.5]; 
-        if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; 
-        
-        return [0,0,0,0];
-    }`;
-
-    const b64Evalscript = btoa(evalscript);
     let floodLayer = null;
 
     function analyzeFlood() {
-        // すでにあれば消す
         if (floodLayer) {
             map.removeLayer(floodLayer);
         }
 
-        // 赤枠のピクセル座標から、地図上の緯度経度境界（Bbox）を計算
         const frame = document.getElementById('targetFrame');
         const rect = frame.getBoundingClientRect();
-        
         const nw = map.containerPointToLatLng([rect.left, rect.top]);
         const se = map.containerPointToLatLng([rect.right, rect.bottom]);
         const bounds = L.latLngBounds(nw, se);
 
+        // ★WMSに「枠外を消す」指示を出すためのWKT（図形情報）を生成
+        const wktGeometry = `POLYGON((${bounds.getWest()} ${bounds.getNorth()}, ${bounds.getEast()} ${bounds.getNorth()}, ${bounds.getEast()} ${bounds.getSouth()}, ${bounds.getWest()} ${bounds.getSouth()}, ${bounds.getWest()} ${bounds.getNorth()}))`;
+
+        // ユーザーが選択した「比較する過去の時期」を取得
+        const selectedValue = document.getElementById("pastDateSelect").value;
+        const today = new Date();
+        let targetTimeIso = "";
+        let timeRangeStart = new Date();
+
+        if (selectedValue === "auto") {
+            timeRangeStart.setMonth(today.getMonth() - 1);
+            targetTimeIso = timeRangeStart.toISOString();
+        } else {
+            targetTimeIso = selectedValue;
+            let targetD = new Date(targetTimeIso);
+            // 確実にSAR観測データを含めるため、目標日より15日前を開始日とする
+            timeRangeStart = new Date(targetD.getTime() - (15 * 24 * 60 * 60 * 1000)); 
+        }
+
+        const formatDate = (d) => d.toISOString().split('T')[0];
+        const timeRange = `${formatDate(timeRangeStart)}/${formatDate(today)}`;
+
+        // ★選択された過去の時期（TargetTime）をEvalscriptの中に直接埋め込む
+        const evalscript = `//VERSION=3
+        function setup() {
+            return {
+                input: ["VV", "dataMask"],
+                output: { bands: 4 },
+                mosaicking: "ORBIT"
+            };
+        }
+        function evaluatePixel(samples, scenes) {
+            if (samples.length < 2) return [0,0,0,0];
+            
+            var latest = samples[0];
+            var latestScene = scenes[0];
+            var past = null;
+            
+            var targetTime = Date.parse("${targetTimeIso}"); 
+            
+            // 目標日以前で、同じ軌道の最新データを探す
+            for (var i = 0; i < samples.length; i++) {
+                var sceneTime = Date.parse(scenes[i].date);
+                if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && sceneTime <= targetTime) {
+                    past = samples[i];
+                    break;
+                }
+            }
+            
+            // 見つからなければ一番古い同軌道データを代用
+            if (!past) {
+                for (var i = samples.length - 1; i > 0; i--) {
+                    if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId) {
+                        past = samples[i];
+                        break;
+                    }
+                }
+                if(!past) past = samples[samples.length - 1]; 
+            }
+            
+            // 閾値を微調整 (市街地ノイズを少し軽減)
+            var thresh = 0.03; 
+            
+            if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
+            
+            var waterLatest = latest.VV < thresh;
+            var waterPast = past.VV < thresh;
+            
+            if (waterLatest && waterPast) return [0, 0, 1, 0.5]; 
+            if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; 
+            
+            return [0,0,0,0];
+        }`;
+
+        const b64Evalscript = btoa(evalscript);
+
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
         
-        // WMSレイヤーを作成。表示領域(bounds)を指定することで処理を限定
         floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
             layers: 'SAR-CHANGE', 
             format: 'image/png',
             transparent: true,
             TIME: timeRange,
+            GEOMETRY: wktGeometry, // ★赤枠の外側の画像を完全にカット（はみ出し防止）
             EVALSCRIPT: b64Evalscript, 
-            bounds: bounds, // ★ここがミソ。赤枠内しかリクエストしない
+            bounds: bounds, 
             maxZoom: 18,
             attribution: '&copy; Copernicus Sentinel data'
         });
@@ -406,12 +452,15 @@
     }
 
     // ==========================================
-    // 最新観測日時の取得機能 (赤枠の範囲で検索)
+    // 最新観測日時の取得
     // ==========================================
     async function updateObservationDate(bounds) {
         if (!bounds) return;
-        
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
+        
+        const today = new Date();
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(today.getMonth() - 1);
         
         const startStr = oneMonthAgo.toISOString().split('.')[0] + 'Z';
         const endStr = today.toISOString().split('.')[0] + 'Z';
@@ -441,9 +490,8 @@
         }
     }
 
-
     // ==========================================
-    // UIコントロール用関数群
+    // UI関連・EXIF保存処理
     // ==========================================
     function changePref() {
         const select = document.getElementById("prefSelect");
