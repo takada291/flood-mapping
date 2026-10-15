@@ -134,7 +134,7 @@
 
 <!-- ★ご要望通りのUI配置に変更 -->
 <div id="controls">
-    <span class="app-title">浸水地図 v0.3</span>
+    <span class="app-title">浸水地図 v0.4</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -190,14 +190,14 @@
     
     <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
 
-    <!-- ★新規追加: 過去半年間の比較時期リスト -->
-    <select id="pastDateSelect"></select>
+    <!-- ★解析したい時期（ターゲット）を選ぶリスト -->
+    <select id="targetDateSelect"></select>
 
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
     <button onclick="downloadMapImageWithExif()">地図保存</button>
     <button id="btnClear" onclick="clearAnalysis()">✖ クリア</button>
 
-    <div id="obsDateDisplay">🛰️ SAR観測日時: 取得中...</div>
+    <div id="obsDateDisplay">🛰️ SAR観測日時: 未取得</div>
 </div>
 
 <div id="map">
@@ -270,15 +270,15 @@
     legend.addTo(map);
 
     // ==========================================
-    // 過去6ヶ月分の期間リストを自動生成
+    // ★過去6ヶ月分の「解析対象時期」リストを自動生成
     // ==========================================
     function populateDateSelect() {
-        const select = document.getElementById("pastDateSelect");
+        const select = document.getElementById("targetDateSelect");
         const today = new Date();
         
         let optAuto = document.createElement("option");
         optAuto.value = "auto";
-        optAuto.text = "比較対象: 約1ヶ月前 (標準)";
+        optAuto.text = "解析対象: 直近 (標準)";
         select.add(optAuto);
 
         for (let i = 0; i < 6; i++) {
@@ -289,14 +289,14 @@
             // 後半 (その月の末日をセット)
             let optLate = document.createElement("option");
             let lastDay = new Date(year, month, 0).getDate();
-            optLate.value = `${year}-${String(month).padStart(2,'0')}-${lastDay}T23:59:59Z`;
-            optLate.text = `比較対象: ${year}年${month}月後半`;
+            optLate.value = new Date(Date.UTC(year, month - 1, lastDay, 23, 59, 59)).toISOString();
+            optLate.text = `解析対象: ${year}年${month}月後半`;
             select.add(optLate);
 
             // 前半 (その月の15日をセット)
             let optEarly = document.createElement("option");
-            optEarly.value = `${year}-${String(month).padStart(2,'0')}-15T23:59:59Z`;
-            optEarly.text = `比較対象: ${year}年${month}月前半`;
+            optEarly.value = new Date(Date.UTC(year, month - 1, 15, 23, 59, 59)).toISOString();
+            optEarly.text = `解析対象: ${year}年${month}月前半`;
             select.add(optEarly);
         }
     }
@@ -323,7 +323,7 @@
     updateFrameSize();
 
     // ==========================================
-    // 浸水判定処理（枠内クリッピング＋期間指定対応）
+    // ★浸水判定処理 (指定時期のタイムマシン対応)
     // ==========================================
     let floodLayer = null;
 
@@ -338,29 +338,22 @@
         const se = map.containerPointToLatLng([rect.right, rect.bottom]);
         const bounds = L.latLngBounds(nw, se);
 
-        // ★WMSに「枠外を消す」指示を出すためのWKT（図形情報）を生成
-        const wktGeometry = `POLYGON((${bounds.getWest()} ${bounds.getNorth()}, ${bounds.getEast()} ${bounds.getNorth()}, ${bounds.getEast()} ${bounds.getSouth()}, ${bounds.getWest()} ${bounds.getSouth()}, ${bounds.getWest()} ${bounds.getNorth()}))`;
-
-        // ユーザーが選択した「比較する過去の時期」を取得
-        const selectedValue = document.getElementById("pastDateSelect").value;
-        const today = new Date();
-        let targetTimeIso = "";
-        let timeRangeStart = new Date();
-
-        if (selectedValue === "auto") {
-            timeRangeStart.setMonth(today.getMonth() - 1);
-            targetTimeIso = timeRangeStart.toISOString();
-        } else {
-            targetTimeIso = selectedValue;
-            let targetD = new Date(targetTimeIso);
-            // 確実にSAR観測データを含めるため、目標日より15日前を開始日とする
-            timeRangeStart = new Date(targetD.getTime() - (15 * 24 * 60 * 60 * 1000)); 
+        // ユーザーが選択した「解析したい対象の時期」を取得
+        const selectedValue = document.getElementById("targetDateSelect").value;
+        let targetEndDate = new Date();
+        
+        if (selectedValue !== "auto") {
+            targetEndDate = new Date(selectedValue);
         }
+        
+        // 過去の比較用データを拾うため、解析対象時期から45日前までを検索範囲に含める
+        let timeRangeStart = new Date(targetEndDate.getTime());
+        timeRangeStart.setDate(timeRangeStart.getDate() - 45);
 
         const formatDate = (d) => d.toISOString().split('T')[0];
-        const timeRange = `${formatDate(timeRangeStart)}/${formatDate(today)}`;
+        const timeRange = `${formatDate(timeRangeStart)}/${formatDate(targetEndDate)}`;
 
-        // ★選択された過去の時期（TargetTime）をEvalscriptの中に直接埋め込む
+        // Evalscript（対象時期の画像をlatestとし、それより10日以上前をpastとする）
         const evalscript = `//VERSION=3
         function setup() {
             return {
@@ -372,33 +365,27 @@
         function evaluatePixel(samples, scenes) {
             if (samples.length < 2) return [0,0,0,0];
             
+            // samples[0] が timeRange で指定した期間の最新（＝解析対象時期）
             var latest = samples[0];
             var latestScene = scenes[0];
             var past = null;
+            var latestTime = Date.parse(latestScene.date);
             
-            var targetTime = Date.parse("${targetTimeIso}"); 
-            
-            // 目標日以前で、同じ軌道の最新データを探す
-            for (var i = 0; i < samples.length; i++) {
+            // 比較用（過去）のデータを探す：軌道が同じで、かつ10日以上前のもの
+            for (var i = 1; i < samples.length; i++) {
                 var sceneTime = Date.parse(scenes[i].date);
-                if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && sceneTime <= targetTime) {
+                var diffDays = (latestTime - sceneTime) / (1000 * 60 * 60 * 24);
+                if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffDays >= 10) {
                     past = samples[i];
                     break;
                 }
             }
             
-            // 見つからなければ一番古い同軌道データを代用
+            // 条件に合う過去データが見つからなければ一番古いものを代用
             if (!past) {
-                for (var i = samples.length - 1; i > 0; i--) {
-                    if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId) {
-                        past = samples[i];
-                        break;
-                    }
-                }
-                if(!past) past = samples[samples.length - 1]; 
+                past = samples[samples.length - 1]; 
             }
             
-            // 閾値を微調整 (市街地ノイズを少し軽減)
             var thresh = 0.03; 
             
             if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
@@ -416,12 +403,12 @@
 
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
         
+        // Leafletのboundsオプションにより、赤枠からはみ出るタイルはそもそもリクエストされません
         floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
             layers: 'SAR-CHANGE', 
             format: 'image/png',
             transparent: true,
             TIME: timeRange,
-            GEOMETRY: wktGeometry, // ★赤枠の外側の画像を完全にカット（はみ出し防止）
             EVALSCRIPT: b64Evalscript, 
             bounds: bounds, 
             maxZoom: 18,
@@ -439,7 +426,8 @@
              alert('解析に失敗しました。');
         });
         
-        updateObservationDate(bounds);
+        // 観測日時の取得処理へ
+        updateObservationDate(bounds, targetEndDate, timeRangeStart);
     }
 
     function clearAnalysis() {
@@ -452,18 +440,15 @@
     }
 
     // ==========================================
-    // 最新観測日時の取得
+    // ★修正: 取得バグを防止したSTAC API処理
     // ==========================================
-    async function updateObservationDate(bounds) {
+    async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
         
-        const today = new Date();
-        const oneMonthAgo = new Date();
-        oneMonthAgo.setMonth(today.getMonth() - 1);
-        
-        const startStr = oneMonthAgo.toISOString().split('.')[0] + 'Z';
-        const endStr = today.toISOString().split('.')[0] + 'Z';
+        // ISOStringのミリ秒部分を丸めてエラーを防止
+        const startStr = timeRangeStart.toISOString().split('.')[0] + 'Z';
+        const endStr = targetEndDate.toISOString().split('.')[0] + 'Z';
         
         try {
             const res = await fetch('https://catalogue.dataspace.copernicus.eu/stac/search', {
@@ -474,7 +459,7 @@
                     datetime: `${startStr}/${endStr}`,
                     collections: ["sentinel-1-grd"],
                     limit: 1,
-                    sortby: [{ field: "datetime", direction: "desc" }]
+                    sortby: [{ field: "datetime", direction: "desc" }] // 期間内で最も新しい（＝解析対象時期の）データを取得
                 })
             });
             const data = await res.json();
@@ -486,6 +471,7 @@
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: データなし`;
             }
         } catch (e) {
+            console.error(e);
             document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得エラー`;
         }
     }
