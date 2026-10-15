@@ -66,6 +66,24 @@
             border: 1px solid #ccc;
         }
         
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        /* スライダー周りの調整 */
+        input[type="range"] {
+            width: 80px;
+            cursor: pointer;
+        }
+        
         #obsDateDisplay {
             margin-left: auto;
             font-size: 13px; 
@@ -133,7 +151,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v0.6</span>
+    <span class="app-title">浸水地図 v0.7</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -191,6 +209,13 @@
 
     <select id="targetDateSelect"></select>
 
+    <!-- ★新規追加: 閾値調整スライダー -->
+    <div class="filter-group">
+        <span style="font-size: 11px;">感度:</span>
+        <input type="range" id="threshSlider" min="0.010" max="0.080" step="0.005" value="0.030" onchange="updateThreshDisplay()">
+        <span id="threshVal" style="width: 35px; text-align: right; font-size: 12px;">0.030</span>
+    </div>
+
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
     <button onclick="downloadMapImageWithExif()">地図保存</button>
     <button id="btnClear" onclick="clearAnalysis()">✖ クリア</button>
@@ -227,13 +252,17 @@
     L.control.scale({ imperial: false, metric: true, position: 'bottomleft' }).addTo(map);
 
     // ==========================================
-    // ベースマップ設定
+    // ベースマップ設定（Esri衛星画像への変更）
     // ==========================================
     const opt = { attribution: '地理院タイル', crossOrigin: "anonymous", maxZoom: 18 };
     const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', opt);
     const std = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', opt);
     const photo = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', opt);
-    const hillshade = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/hillshademap/{z}/{x}/{y}.png', { ...opt, opacity: 0.7 });
+    
+    // ★陰影図を削除し、Esri World Imageryを追加
+    const optEsri = { attribution: 'Esri World Imagery', crossOrigin: "anonymous", maxZoom: 18 };
+    const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', optEsri);
+    
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
     });
@@ -244,7 +273,7 @@
         "淡色地図（水域が見やすい）": pale,
         "標準地図（地理院）": std,
         "最新空中写真": photo,
-        "陰影起伏図（地形把握）": hillshade,
+        "衛星画像（Esri）": esri, // ★ここを変更
         "OpenStreetMap（世界地図）": osm
     };
     L.control.layers(baseMaps, null, { collapsed: false }).addTo(map);
@@ -259,7 +288,8 @@
             <i style="background: rgba(0, 0, 255, 0.5)"></i> いつもと変わらない水域 (河川・湖)<br>
             <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
                 ※赤枠を合わせて「浸水判定」ボタンを押してください。<br>
-                ※ビル街・山間部はノイズが出やすいためご注意ください。
+                ※ビル街・山間部はノイズが出やすいためご注意ください。<br>
+                ※感度を上げると細かい水溜りも拾いますがノイズも増えます。
             </div>
         `;
         div.innerHTML = html;
@@ -268,8 +298,13 @@
     legend.addTo(map);
 
     // ==========================================
-    // 過去6ヶ月分の期間リストを自動生成
+    // UI制御関数群
     // ==========================================
+    function updateThreshDisplay() {
+        const val = parseFloat(document.getElementById('threshSlider').value).toFixed(3);
+        document.getElementById('threshVal').innerText = val;
+    }
+
     function populateDateSelect() {
         const select = document.getElementById("targetDateSelect");
         const today = new Date();
@@ -319,7 +354,7 @@
     updateFrameSize();
 
     // ==========================================
-    // ★バグ完全修正版: 浸水判定処理
+    // ★浸水判定処理
     // ==========================================
     let floodLayer = null;
 
@@ -349,7 +384,9 @@
         const formatDate = (d) => d.toISOString().split('T')[0];
         const timeRange = `${formatDate(timeRangeStart)}/${formatDate(targetEndDate)}`;
 
-        // ★修正: 変数埋め込みや日本語コメントを完全排除したピュアなコード
+        // ★スライダーで設定した閾値を取得してEvalscriptに動的挿入
+        const userThresh = parseFloat(document.getElementById('threshSlider').value);
+
         const evalscript = `//VERSION=3
 function setup() {
     return {
@@ -367,7 +404,6 @@ function evaluatePixel(samples, scenes) {
     
     for (var i = 1; i < samples.length; i++) {
         var diffMs = latestScene.date.getTime() - scenes[i].date.getTime();
-        // 10 days = 864000000 ms
         if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffMs >= 864000000) {
             past = samples[i];
             break;
@@ -390,7 +426,8 @@ function evaluatePixel(samples, scenes) {
     
     if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
     
-    var thresh = 0.03; 
+    // JSから動的に閾値を注入
+    var thresh = ${userThresh}; 
     
     var waterLatest = latest.VV < thresh;
     var waterPast = past.VV < thresh;
@@ -401,7 +438,6 @@ function evaluatePixel(samples, scenes) {
     return [0,0,0,0];
 }`;
 
-        // ★通信エラー防止のため確実にBase64エンコードして送信
         const b64Evalscript = btoa(evalscript);
 
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
@@ -411,9 +447,10 @@ function evaluatePixel(samples, scenes) {
             format: 'image/png',
             transparent: true,
             TIME: timeRange,
-            EVALSCRIPT: b64Evalscript, // エンコード済みのコードを指定
-            bounds: bounds, // Leaflet側の制御で赤枠内のみリクエスト
+            EVALSCRIPT: b64Evalscript,
+            bounds: bounds, 
             maxZoom: 18,
+            zIndex: 10, // ★レイヤーが他のベースマップの下に隠れないように修正
             attribution: '&copy; Copernicus Sentinel data'
         });
 
@@ -424,7 +461,11 @@ function evaluatePixel(samples, scenes) {
              document.getElementById('btnClear').style.display = "inline-block";
         });
         
-        // エラーによる過剰な強制停止（アラート連発）を削除し、サイレントに処理を継続させます
+        floodLayer.on('tileerror', function() {
+             document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
+             alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
+             clearAnalysis();
+        });
         
         updateObservationDate(bounds, targetEndDate, timeRangeStart);
     }
@@ -439,14 +480,14 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // 最新観測日時の取得
+    // ★APIエラー防止処理を強化した観測日時取得
     // ==========================================
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
         
-        const startStr = timeRangeStart.toISOString().split('.')[0] + 'Z';
-        const endStr = targetEndDate.toISOString().split('.')[0] + 'Z';
+        const startStr = timeRangeStart.toISOString();
+        const endStr = targetEndDate.toISOString();
         
         try {
             const res = await fetch('https://catalogue.dataspace.copernicus.eu/stac/search', {
@@ -469,7 +510,9 @@ function evaluatePixel(samples, scenes) {
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: データなし`;
             }
         } catch (e) {
-            document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得エラー`;
+            // エラー時でも画面がフリーズしないようコンソールに逃がす
+            console.error(e);
+            document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 未取得(APIｴﾗｰ)`;
         }
     }
 
@@ -529,7 +572,7 @@ function evaluatePixel(samples, scenes) {
             if(layer === pale) activeLayerName = "pale";
             else if(layer === std) activeLayerName = "std";
             else if(layer === photo) activeLayerName = "photo";
-            else if(layer === hillshade) activeLayerName = "hillshade";
+            else if(layer === esri) activeLayerName = "esri"; // ★変更
             else if(layer === osm) activeLayerName = "osm";
         });
         
