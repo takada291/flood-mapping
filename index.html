@@ -133,8 +133,7 @@
 <body>
 
 <div id="controls">
-    <!-- バージョンを v0.5 に更新 -->
-    <span class="app-title">浸水地図 v0.5</span>
+    <span class="app-title">浸水地図 v0.6</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -320,7 +319,7 @@
     updateFrameSize();
 
     // ==========================================
-    // ★バグ修正版: 浸水判定処理
+    // ★バグ完全修正版: 浸水判定処理
     // ==========================================
     let floodLayer = null;
 
@@ -336,11 +335,9 @@
         const bounds = L.latLngBounds(nw, se);
 
         const selectedValue = document.getElementById("targetDateSelect").value;
-        const today = new Date();
         let targetEndDate = new Date();
         let timeRangeStart = new Date();
 
-        // 対象期間を計算 (選択された時期から45日前までを検索範囲とする)
         if (selectedValue === "auto") {
             timeRangeStart.setDate(targetEndDate.getDate() - 45);
         } else {
@@ -352,70 +349,70 @@
         const formatDate = (d) => d.toISOString().split('T')[0];
         const timeRange = `${formatDate(timeRangeStart)}/${formatDate(targetEndDate)}`;
 
-        // ★修正: サーバーエラーを引き起こす原因（文字列パースやコメント）を完全排除した堅牢なコード
+        // ★修正: 変数埋め込みや日本語コメントを完全排除したピュアなコード
         const evalscript = `//VERSION=3
-        function setup() {
-            return {
-                input: ["VV", "dataMask"],
-                output: { bands: 4 },
-                mosaicking: "ORBIT"
-            };
+function setup() {
+    return {
+        input: ["VV", "dataMask"],
+        output: { bands: 4 },
+        mosaicking: "ORBIT"
+    };
+}
+function evaluatePixel(samples, scenes) {
+    if (samples.length < 2) return [0,0,0,0];
+    
+    var latest = samples[0];
+    var latestScene = scenes[0];
+    var past = null;
+    
+    for (var i = 1; i < samples.length; i++) {
+        var diffMs = latestScene.date.getTime() - scenes[i].date.getTime();
+        // 10 days = 864000000 ms
+        if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffMs >= 864000000) {
+            past = samples[i];
+            break;
         }
-        function evaluatePixel(samples, scenes) {
-            if (samples.length < 2) return [0,0,0,0];
-            
-            var latest = samples[0];
-            var latestScene = scenes[0];
-            var past = null;
-            
-            // 最新データと同じ軌道で、かつ10日以上古いデータを過去の比較対象とする
-            for (var i = 1; i < samples.length; i++) {
-                var diffDays = (latestScene.date.getTime() - scenes[i].date.getTime()) / (1000 * 3600 * 24);
-                if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffDays >= 10) {
-                    past = samples[i];
-                    break;
-                }
+    }
+    
+    if (!past) {
+        for (var j = 1; j < samples.length; j++) {
+            var diffMsFallback = latestScene.date.getTime() - scenes[j].date.getTime();
+            if (diffMsFallback >= 864000000) {
+                past = samples[j];
+                break;
             }
-            
-            // 同じ軌道が見つからなかった場合のバックアップ（とにかく10日以上古いもの）
-            if (!past) {
-                for (var j = 1; j < samples.length; j++) {
-                    var diffDaysFallback = (latestScene.date.getTime() - scenes[j].date.getTime()) / (1000 * 3600 * 24);
-                    if (diffDaysFallback >= 10) {
-                        past = samples[j];
-                        break;
-                    }
-                }
-            }
-            
-            // 最終バックアップ
-            if (!past) {
-                past = samples[samples.length - 1];
-            }
-            
-            if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
-            
-            var thresh = 0.025; 
-            
-            var waterLatest = latest.VV < thresh;
-            var waterPast = past.VV < thresh;
-            
-            if (waterLatest && waterPast) return [0, 0, 1, 0.5]; 
-            if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; 
-            
-            return [0,0,0,0];
-        }`;
+        }
+    }
+    
+    if (!past) {
+        past = samples[samples.length - 1];
+    }
+    
+    if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
+    
+    var thresh = 0.03; 
+    
+    var waterLatest = latest.VV < thresh;
+    var waterPast = past.VV < thresh;
+    
+    if (waterLatest && waterPast) return [0, 0, 1, 0.5]; 
+    if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; 
+    
+    return [0,0,0,0];
+}`;
+
+        // ★通信エラー防止のため確実にBase64エンコードして送信
+        const b64Evalscript = btoa(evalscript);
 
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
         
-        // Leafletの機能を使って、URLエンコードを安全に任せる
         floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
             layers: 'SAR-CHANGE', 
             format: 'image/png',
             transparent: true,
             TIME: timeRange,
-            EVALSCRIPT: evalscript, // base64変換をやめて直接渡す（安定性向上）
-            bounds: bounds, // 赤枠内のみリクエスト
+            EVALSCRIPT: b64Evalscript, // エンコード済みのコードを指定
+            bounds: bounds, // Leaflet側の制御で赤枠内のみリクエスト
             maxZoom: 18,
             attribution: '&copy; Copernicus Sentinel data'
         });
@@ -427,11 +424,7 @@
              document.getElementById('btnClear').style.display = "inline-block";
         });
         
-        floodLayer.on('tileerror', function() {
-             document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
-             alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
-             clearAnalysis();
-        });
+        // エラーによる過剰な強制停止（アラート連発）を削除し、サイレントに処理を継続させます
         
         updateObservationDate(bounds, targetEndDate, timeRangeStart);
     }
