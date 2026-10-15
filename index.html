@@ -56,8 +56,6 @@
 
         #btnAnalyze { background-color: #dc3545; }
         #btnAnalyze:hover { background-color: #c82333; }
-        #btnClear { background-color: #6c757d; display: none; }
-        #btnClear:hover { background-color: #5a6268; }
 
         select, input[type="text"] {
             padding: 5px;
@@ -76,11 +74,6 @@
             border: 1px solid #ccc;
             font-size: 13px;
             font-weight: bold;
-        }
-
-        input[type="range"] {
-            width: 80px;
-            cursor: pointer;
         }
         
         #obsDateDisplay {
@@ -151,7 +144,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v1.0</span>
+    <span class="app-title">浸水地図 v1.1</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -209,15 +202,21 @@
 
     <select id="targetDateSelect"></select>
 
+    <!-- ★ラジオボタンに変更 -->
     <div class="filter-group">
         <span style="font-size: 11px;">感度:</span>
-        <input type="range" id="threshSlider" min="0.010" max="0.100" step="0.005" value="0.030" onchange="updateThreshDisplay()">
-        <span id="threshVal" style="width: 35px; text-align: right; font-size: 12px;">0.030</span>
+        <label style="cursor: pointer; margin-right: 2px; font-weight: normal; font-size: 12px;">
+            <input type="radio" name="threshRadio" value="0.03" checked> 低
+        </label>
+        <label style="cursor: pointer; margin-right: 2px; font-weight: normal; font-size: 12px;">
+            <input type="radio" name="threshRadio" value="0.075"> 中
+        </label>
+        <label style="cursor: pointer; font-weight: normal; font-size: 12px;">
+            <input type="radio" name="threshRadio" value="0.1"> 高
+        </label>
     </div>
 
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
-    <button onclick="downloadMapImageWithExif()">地図保存</button>
-    <button id="btnClear" onclick="clearAnalysis()">✖ クリア</button>
 
     <div id="obsDateDisplay">🛰️ SAR観測日時: 未取得</div>
 </div>
@@ -227,9 +226,8 @@
     <div class="crosshair"></div>
 </div>
 
+<!-- ★不要になった画像保存用のライブラリを削除し、読み込みを高速化 -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-simple-map-screenshoter"></script>
-<script src="https://unpkg.com/piexifjs@1.0.6/piexif.js"></script>
 
 <script>
     const INSTANCE_ID = "c4013cea-2cf9-4011-8915-47a5efb06b75"; 
@@ -274,10 +272,8 @@
         "衛星画像（Esri）": esri,
         "OpenStreetMap（世界地図）": osm
     };
-    // ★メニューを初期状態で折りたたむ (collapsed: true)
     L.control.layers(baseMaps, null, { collapsed: true }).addTo(map);
 
-    // ★凡例を折りたたみ（縮小）可能にする
     const legend = L.control({position: 'bottomright'});
     legend.onAdd = function (map) {
         const div = L.DomUtil.create('div', 'info legend');
@@ -397,7 +393,15 @@
         const formatDate = (d) => d.toISOString().split('T')[0];
         const timeRange = `${formatDate(timeRangeStart)}/${formatDate(targetEndDate)}`;
 
-        const userThresh = parseFloat(document.getElementById('threshSlider').value);
+        // ★ラジオボタンから設定した閾値を取得
+        let userThresh = 0.03;
+        const radios = document.getElementsByName('threshRadio');
+        for (let i = 0; i < radios.length; i++) {
+            if (radios[i].checked) {
+                userThresh = parseFloat(radios[i].value);
+                break;
+            }
+        }
 
         const evalscript = `//VERSION=3
 function setup() {
@@ -475,25 +479,18 @@ function evaluatePixel(samples, scenes) {
 
         floodLayer.on('load', function() {
              document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
-             document.getElementById('btnClear').style.display = "inline-block";
         });
         
         floodLayer.on('tileerror', function() {
              document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
              alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
-             clearAnalysis();
+             if (floodLayer) {
+                 map.removeLayer(floodLayer);
+                 floodLayer = null;
+             }
         });
         
         updateObservationDate(bounds, targetEndDate, timeRangeStart);
-    }
-
-    function clearAnalysis() {
-        if (floodLayer) {
-            map.removeLayer(floodLayer);
-            floodLayer = null;
-        }
-        document.getElementById('btnClear').style.display = "none";
-        document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 未取得`;
     }
 
     // ==========================================
@@ -533,13 +530,8 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // UI関連・EXIF保存処理
+    // UI制御関数
     // ==========================================
-    function updateThreshDisplay() {
-        const val = parseFloat(document.getElementById('threshSlider').value).toFixed(3);
-        document.getElementById('threshVal').innerText = val;
-    }
-
     function changePref() {
         const select = document.getElementById("prefSelect");
         const val = select.value.split(","); 
@@ -575,49 +567,6 @@ function evaluatePixel(samples, scenes) {
     map.on('locationerror', function(e) {
         alert("GPS現在地を取得できませんでした。スマホの位置情報設定をご確認ください。");
     });
-
-    const screenshoter = L.simpleMapScreenshoter({
-        hideElementsWithSelectors: [".leaflet-control-container", "#controls", ".info.legend", "#targetFrame"],
-        mimeType: "image/jpeg"
-    }).addTo(map);
-
-    function downloadMapImageWithExif() {
-        const bounds = map.getBounds();
-        const south = bounds.getSouth().toFixed(6);
-        const west = bounds.getWest().toFixed(6);
-        const north = bounds.getNorth().toFixed(6);
-        const east = bounds.getEast().toFixed(6);
-        
-        let activeLayerName = "map";
-        map.eachLayer(function(layer){
-            if(layer === pale) activeLayerName = "pale";
-            else if(layer === std) activeLayerName = "std";
-            else if(layer === photo) activeLayerName = "photo";
-            else if(layer === esri) activeLayerName = "esri";
-            else if(layer === osm) activeLayerName = "osm";
-        });
-        
-        if(floodLayer && map.hasLayer(floodLayer)) {
-            activeLayerName = `flood_${activeLayerName}`;
-        }
-
-        const filename = `${activeLayerName}_${south}_${west}_${north}_${east}.jpg`;
-
-        screenshoter.takeScreen('image')
-            .then(jpegDataUrl => {
-                const coordsString = `${south},${west},${north},${east}`;
-                const zeroth = {};
-                zeroth[piexif.ImageIFD.ImageDescription] = coordsString;
-                const exifObj = {"0th": zeroth, "Exif": {}, "GPS": {}};
-                const newDataUrl = piexif.insert(piexif.dump(exifObj), jpegDataUrl);
-
-                const link = document.createElement('a');
-                link.download = filename;
-                link.href = newDataUrl;
-                link.click();
-            })
-            .catch(e => alert("保存エラー:\n" + e.toString()));
-    }
 </script>
 
 </body>
