@@ -56,6 +56,14 @@
 
         #btnAnalyze { background-color: #dc3545; }
         #btnAnalyze:hover { background-color: #c82333; }
+        
+        /* ★追加: ボタンが無効化された時のグレーアウトスタイル */
+        #btnAnalyze:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            box-shadow: none;
+            opacity: 0.8;
+        }
 
         select, input[type="text"] {
             padding: 5px;
@@ -110,7 +118,6 @@
             border-radius: 2px;
         }
 
-        /* 赤枠のスタイルを削除し、十字カーソルのみ残す */
         .crosshair {
             position: absolute;
             top: 50%;
@@ -134,7 +141,8 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v1.2</span>
+    <!-- バージョンを v1.3 に更新 -->
+    <span class="app-title">浸水地図 v1.3</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -181,7 +189,7 @@
         <option value="32.744,129.873">長崎県</option>
         <option value="32.789,130.741">熊本県</option>
         <option value="33.238,131.612">大分県</option>
-        <option value="31.911,131.423">宫崎県</option>
+        <option value="31.911,131.423">宮崎県</option>
         <option value="31.560,130.558">鹿児島県</option>
         <option value="26.212,127.681">沖縄県</option>
     </select>
@@ -205,6 +213,7 @@
         </label>
     </div>
 
+    <!-- 浸水判定ボタン -->
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
 
     <div id="obsDateDisplay">🛰️ SAR観測日時: 未取得</div>
@@ -218,6 +227,9 @@
 
 <script>
     const INSTANCE_ID = "c4013cea-2cf9-4011-8915-47a5efb06b75"; 
+    
+    // ★追加: 判定を許可する最小ズームレベル（11は福井県の嶺北地域が概ね収まるサイズ）
+    const MIN_ANALYZE_ZOOM = 11;
 
     const urlParams = new URLSearchParams(window.location.search);
     const latParam = urlParams.get('lat');
@@ -330,11 +342,43 @@
     populateDateSelect();
 
     // ==========================================
+    // ★追加: ズームレベルに応じたボタン無効化と処理の強制ストップ
+    // ==========================================
+    function checkZoomLevel() {
+        const btn = document.getElementById('btnAnalyze');
+        if (map.getZoom() < MIN_ANALYZE_ZOOM) {
+            btn.disabled = true;
+            btn.innerText = "🔍 ズームイン必須";
+            
+            // 広域にズームアウトされたら、重い自動処理が走るのを防ぐためにレイヤーを消去
+            if (floodLayer) {
+                map.removeLayer(floodLayer);
+                floodLayer = null;
+                document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 広域のため非表示`;
+            }
+        } else {
+            btn.disabled = false;
+            btn.innerText = "🌊 浸水判定";
+        }
+    }
+    
+    // ズーム変更時に常にチェック
+    map.on('zoomend', checkZoomLevel);
+    // 起動時にもチェック
+    checkZoomLevel();
+
+    // ==========================================
     // 浸水判定処理 (広域解放版)
     // ==========================================
     let floodLayer = null;
 
     function analyzeFlood() {
+        // 念のための安全装置
+        if (map.getZoom() < MIN_ANALYZE_ZOOM) {
+            alert("範囲が広すぎます。もう少しズームインしてから判定してください。");
+            return;
+        }
+
         if (floodLayer) {
             map.removeLayer(floodLayer);
         }
@@ -423,7 +467,6 @@ function evaluatePixel(samples, scenes) {
 
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
         
-        // ★bounds（赤枠制限）オプションを削除し、画面全体を解析対象とする
         floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
             layers: 'SAR-CHANGE', 
             format: 'image/png',
@@ -438,11 +481,12 @@ function evaluatePixel(samples, scenes) {
         floodLayer.addTo(map);
 
         floodLayer.on('load', function() {
-             document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
+             // 読み込みが終わったら、ズームアウト制限チェックを通してボタン名を戻す
+             checkZoomLevel();
         });
         
         floodLayer.on('tileerror', function() {
-             document.getElementById('btnAnalyze').innerText = "🌊 浸水判定";
+             checkZoomLevel();
              alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
              if (floodLayer) {
                  map.removeLayer(floodLayer);
@@ -450,7 +494,6 @@ function evaluatePixel(samples, scenes) {
              }
         });
         
-        // 日時取得APIには現在画面に見えている範囲（bounds）を渡す
         updateObservationDate(map.getBounds(), targetEndDate, timeRangeStart);
     }
 
