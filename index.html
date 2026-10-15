@@ -104,8 +104,9 @@
             color: #333;
             border-radius: 5px;
             box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            cursor: pointer;
         }
-        .info.legend h4 { margin: 0 0 5px 0; font-size: 14px; color: #004d26; }
+        .info.legend h4 { margin: 0; font-size: 14px; color: #004d26; }
         .info.legend i {
             width: 18px;
             height: 18px;
@@ -150,8 +151,7 @@
 <body>
 
 <div id="controls">
-    <!-- バージョンを v0.9 に更新 -->
-    <span class="app-title">浸水地図 v0.9</span>
+    <span class="app-title">浸水地図 v1.0</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -209,10 +209,9 @@
 
     <select id="targetDateSelect"></select>
 
-    <!-- ★スライダーの上限を0.200に大幅アップ -->
     <div class="filter-group">
         <span style="font-size: 11px;">感度:</span>
-        <input type="range" id="threshSlider" min="0.010" max="0.200" step="0.005" value="0.030" onchange="updateThreshDisplay()">
+        <input type="range" id="threshSlider" min="0.010" max="0.100" step="0.005" value="0.030" onchange="updateThreshDisplay()">
         <span id="threshVal" style="width: 35px; text-align: right; font-size: 12px;">0.030</span>
     </div>
 
@@ -275,34 +274,53 @@
         "衛星画像（Esri）": esri,
         "OpenStreetMap（世界地図）": osm
     };
-    L.control.layers(baseMaps, null, { collapsed: false }).addTo(map);
+    // ★メニューを初期状態で折りたたむ (collapsed: true)
+    L.control.layers(baseMaps, null, { collapsed: true }).addTo(map);
 
-    // ★凡例の順番とテキストを修正
+    // ★凡例を折りたたみ（縮小）可能にする
     const legend = L.control({position: 'bottomright'});
     legend.onAdd = function (map) {
         const div = L.DomUtil.create('div', 'info legend');
         L.DomEvent.disableClickPropagation(div);
         let html = `
-            <h4>💧 浸水域判定マップ</h4>
-            <i style="background: rgba(0, 0, 255, 0.5)"></i> 約1ヶ月前と変わらない水域 (河川・湖)<br>
-            <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たに水で覆われた場所 (浸水等)<br>
-            <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
-                ※赤枠を合わせて「浸水判定」ボタンを押してください。<br>
-                ※ビル街・山間部はノイズが出やすいためご注意ください。<br>
-                ※感度を上げると細かい水溜りも拾いますがノイズも増えます。
+            <div id="legendHeader" style="display: flex; justify-content: space-between; align-items: center;">
+                <h4 style="color: #004d26;">💧 浸水域判定マップ</h4>
+                <span id="legendToggleIcon" style="font-size: 16px; font-weight: bold; color: #007bff; margin-left: 15px;">[-]</span>
+            </div>
+            <div id="legendContent" style="display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid #ccc;">
+                <i style="background: rgba(0, 0, 255, 0.5)"></i> 約1ヶ月前と変わらない水域 (河川・湖)<br>
+                <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たに水で覆われた場所 (浸水等)<br>
+                <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
+                    ※赤枠を合わせて「浸水判定」ボタンを押してください。<br>
+                    ※ビル街・山間部はノイズが出やすいためご注意ください。<br>
+                    ※感度を上げると細かい水溜りも拾いますがノイズも増えます。
+                </div>
             </div>
         `;
         div.innerHTML = html;
+
+        div.onclick = function() {
+            const content = document.getElementById('legendContent');
+            const icon = document.getElementById('legendToggleIcon');
+            if (content.style.display === 'none') {
+                content.style.display = 'block'; 
+                icon.innerText = '[-]';
+            } else {
+                content.style.display = 'none';  
+                icon.innerText = '[+]';
+            }
+        };
+
         return div;
     };
     legend.addTo(map);
 
     // ==========================================
-    // 過去6ヶ月分の期間リストを自動生成（常に現在時刻ベースで可変）
+    // 過去6ヶ月分の期間リストを自動生成
     // ==========================================
     function populateDateSelect() {
         const select = document.getElementById("targetDateSelect");
-        const today = new Date(); // ← ここでその瞬間の日付を取得して計算しています！
+        const today = new Date(); 
         
         let optAuto = document.createElement("option");
         optAuto.value = "auto";
@@ -518,7 +536,6 @@ function evaluatePixel(samples, scenes) {
     // UI関連・EXIF保存処理
     // ==========================================
     function updateThreshDisplay() {
-        // スライダーの数値をリアルタイム更新（3桁固定）
         const val = parseFloat(document.getElementById('threshSlider').value).toFixed(3);
         document.getElementById('threshVal').innerText = val;
     }
