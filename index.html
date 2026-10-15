@@ -78,7 +78,6 @@
             font-weight: bold;
         }
 
-        /* スライダー周りの調整 */
         input[type="range"] {
             width: 80px;
             cursor: pointer;
@@ -151,7 +150,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v0.7</span>
+    <span class="app-title">浸水地図 v0.8</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -209,7 +208,6 @@
 
     <select id="targetDateSelect"></select>
 
-    <!-- ★新規追加: 閾値調整スライダー -->
     <div class="filter-group">
         <span style="font-size: 11px;">感度:</span>
         <input type="range" id="threshSlider" min="0.010" max="0.080" step="0.005" value="0.030" onchange="updateThreshDisplay()">
@@ -252,14 +250,13 @@
     L.control.scale({ imperial: false, metric: true, position: 'bottomleft' }).addTo(map);
 
     // ==========================================
-    // ベースマップ設定（Esri衛星画像への変更）
+    // ベースマップ設定
     // ==========================================
     const opt = { attribution: '地理院タイル', crossOrigin: "anonymous", maxZoom: 18 };
     const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', opt);
     const std = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', opt);
     const photo = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', opt);
     
-    // ★陰影図を削除し、Esri World Imageryを追加
     const optEsri = { attribution: 'Esri World Imagery', crossOrigin: "anonymous", maxZoom: 18 };
     const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', optEsri);
     
@@ -273,7 +270,7 @@
         "淡色地図（水域が見やすい）": pale,
         "標準地図（地理院）": std,
         "最新空中写真": photo,
-        "衛星画像（Esri）": esri, // ★ここを変更
+        "衛星画像（Esri）": esri,
         "OpenStreetMap（世界地図）": osm
     };
     L.control.layers(baseMaps, null, { collapsed: false }).addTo(map);
@@ -298,7 +295,7 @@
     legend.addTo(map);
 
     // ==========================================
-    // UI制御関数群
+    // UI制御関数
     // ==========================================
     function updateThreshDisplay() {
         const val = parseFloat(document.getElementById('threshSlider').value).toFixed(3);
@@ -354,7 +351,7 @@
     updateFrameSize();
 
     // ==========================================
-    // ★浸水判定処理
+    // ★浸水判定処理 (完全ASCII化・バグ修正済)
     // ==========================================
     let floodLayer = null;
 
@@ -384,9 +381,9 @@
         const formatDate = (d) => d.toISOString().split('T')[0];
         const timeRange = `${formatDate(timeRangeStart)}/${formatDate(targetEndDate)}`;
 
-        // ★スライダーで設定した閾値を取得してEvalscriptに動的挿入
         const userThresh = parseFloat(document.getElementById('threshSlider').value);
 
+        // 日本語・全角文字を完全に排除したEvalscript
         const evalscript = `//VERSION=3
 function setup() {
     return {
@@ -426,7 +423,6 @@ function evaluatePixel(samples, scenes) {
     
     if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
     
-    // JSから動的に閾値を注入
     var thresh = ${userThresh}; 
     
     var waterLatest = latest.VV < thresh;
@@ -438,7 +434,14 @@ function evaluatePixel(samples, scenes) {
     return [0,0,0,0];
 }`;
 
-        const b64Evalscript = btoa(evalscript);
+        // btoaの暗号化エラーを完全に回避
+        let b64Evalscript;
+        try {
+            b64Evalscript = btoa(evalscript);
+        } catch(e) {
+            alert("システムエラー: コードの暗号化に失敗しました。");
+            return;
+        }
 
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
         
@@ -450,7 +453,7 @@ function evaluatePixel(samples, scenes) {
             EVALSCRIPT: b64Evalscript,
             bounds: bounds, 
             maxZoom: 18,
-            zIndex: 10, // ★レイヤーが他のベースマップの下に隠れないように修正
+            zIndex: 10,
             attribution: '&copy; Copernicus Sentinel data'
         });
 
@@ -480,7 +483,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★APIエラー防止処理を強化した観測日時取得
+    // 最新観測日時の取得
     // ==========================================
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
@@ -510,7 +513,6 @@ function evaluatePixel(samples, scenes) {
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: データなし`;
             }
         } catch (e) {
-            // エラー時でも画面がフリーズしないようコンソールに逃がす
             console.error(e);
             document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 未取得(APIｴﾗｰ)`;
         }
@@ -572,7 +574,7 @@ function evaluatePixel(samples, scenes) {
             if(layer === pale) activeLayerName = "pale";
             else if(layer === std) activeLayerName = "std";
             else if(layer === photo) activeLayerName = "photo";
-            else if(layer === esri) activeLayerName = "esri"; // ★変更
+            else if(layer === esri) activeLayerName = "esri";
             else if(layer === osm) activeLayerName = "osm";
         });
         
