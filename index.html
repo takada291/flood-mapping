@@ -16,7 +16,16 @@
     </script>
     
     <style>
-        body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background: #fff; }
+        /* ★v1.5修正: 100dvh を追加し、モバイルブラウザでの見切れを防止 */
+        body { 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            height: 100dvh; 
+            background: #fff; 
+        }
         #controls {
             padding: 8px;
             background: #f8f9fa;
@@ -83,16 +92,16 @@
             font-weight: bold;
         }
         
-        /* ★v1.4 追加: 右下に情報パネルをまとめて表示するためのコンテナ */
+        /* ★v1.5修正: bottomを30pxに上げ、下からの余白を確保 */
         #infoPanel {
             position: absolute;
-            bottom: 20px;
+            bottom: 30px;
             right: 10px;
             z-index: 1000;
             display: flex;
             flex-direction: column;
             gap: 5px;
-            pointer-events: none; /* 下の地図を操作できるようにする */
+            pointer-events: none; 
         }
 
         .info-box {
@@ -105,13 +114,14 @@
             border: 1px solid #ccc;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
             white-space: nowrap;
-            pointer-events: auto; /* ここだけはイベントを受け付ける */
+            pointer-events: auto; 
         }
         
         #rainDisplay {
-            color: #0056b3; /* 雨量は青系の色にする */
+            color: #0056b3; 
         }
 
+        /* ★v1.5修正: 下部マージン追加と、最大高さ＆スクロール設定 */
         .info.legend {
             background: rgba(255, 255, 255, 0.95);
             padding: 10px 15px;
@@ -122,6 +132,9 @@
             box-shadow: 0 0 15px rgba(0,0,0,0.2);
             cursor: pointer;
             pointer-events: auto;
+            margin-bottom: 20px !important;
+            max-height: 40vh;
+            overflow-y: auto;
         }
         .info.legend h4 { margin: 0; font-size: 14px; color: #004d26; }
         .info.legend i {
@@ -157,8 +170,7 @@
 <body>
 
 <div id="controls">
-    <!-- バージョンを v1.4 に更新 -->
-    <span class="app-title">浸水地図 v1.4</span>
+    <span class="app-title">浸水地図 v1.5</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -236,7 +248,6 @@
 <div id="map">
     <div class="crosshair"></div>
     
-    <!-- ★v1.4 追加: マップ右下に情報表示パネルを配置 -->
     <div id="infoPanel">
         <div id="rainDisplay" class="info-box" style="display: none;">🌧️ 観測前3日間の雨量: 未取得</div>
         <div id="obsDateDisplay" class="info-box">🛰️ SAR観測日時: 未取得</div>
@@ -263,7 +274,6 @@
         startLon = parseFloat(lonParam);
     }
 
-    // ★修正: パネルと被らないようズームコントロールを明示的に配置
     const map = L.map('map', { preferCanvas: true, zoomControl: false }).setView([startLat, startLon], startZoom);
     L.control.zoom({ position: 'topleft' }).addTo(map);
     L.control.scale({ imperial: false, metric: true, position: 'bottomleft' }).addTo(map);
@@ -294,7 +304,6 @@
     };
     L.control.layers(baseMaps, null, { collapsed: true }).addTo(map);
 
-    // ★修正: 凡例を左下に移動
     const legend = L.control({position: 'bottomleft'}); 
     legend.onAdd = function (map) {
         const div = L.DomUtil.create('div', 'info legend');
@@ -402,8 +411,7 @@
             map.removeLayer(floodLayer);
         }
 
-        // ★v1.4 追加: 新しい解析が走ったら雨量表示を一旦隠す
-        document.getElementById('rainDisplay').style.display = 'none'; 
+        document.getElementById('rainDisplay').style.display = 'none';
 
         const selectedValue = document.getElementById("targetDateSelect").value;
         let targetEndDate = new Date();
@@ -519,7 +527,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // 最新観測日時の取得 ＆ ★v1.4 追加: 過去雨量データの取得連携
+    // 最新観測日時の取得 ＆ 過去雨量データの取得連携
     // ==========================================
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
@@ -529,7 +537,6 @@ function evaluatePixel(samples, scenes) {
         const endStr = targetEndDate.toISOString();
         
         try {
-            // 1. まずSAR衛星の観測日時を取得する
             const res = await fetch('https://catalogue.dataspace.copernicus.eu/stac/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -544,12 +551,10 @@ function evaluatePixel(samples, scenes) {
             const data = await res.json();
             
             if (data.features && data.features.length > 0) {
-                // 観測日時を取得成功
                 const dt = new Date(data.features[0].properties.datetime);
                 const fmt = `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日 ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: ${fmt}`;
                 
-                // 2. ★追加：観測日時が判明したら、その日までの3日間の雨量をOpen-Meteoで取得する
                 fetchRainData(map.getCenter().lat, map.getCenter().lng, dt);
                 
             } else {
@@ -562,19 +567,17 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v1.4 追加: Open-Meteo APIによる過去雨量取得機能
+    // Open-Meteo APIによる過去雨量取得機能
     // ==========================================
     async function fetchRainData(lat, lon, obsDate) {
         document.getElementById('rainDisplay').innerText = `🌧️ 直近3日間の雨量: 計算中...`;
         document.getElementById('rainDisplay').style.display = 'block';
 
-        // 観測日（終了日）と、その3日前（開始日）を計算して YYYY-MM-DD 形式にする
         const endDateStr = obsDate.toISOString().split('T')[0];
         const startDate = new Date(obsDate);
         startDate.setDate(startDate.getDate() - 3);
         const startDateStr = startDate.toISOString().split('T')[0];
 
-        // Open-Meteoの過去気象データAPI (Archive) のURL構築
         const apiUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startDateStr}&end_date=${endDateStr}&hourly=precipitation&timezone=Asia%2FTokyo`;
 
         try {
@@ -584,7 +587,6 @@ function evaluatePixel(samples, scenes) {
             }
             const weatherData = await response.json();
             
-            // 取得した毎時の降水量配列を合計する
             const rainArray = weatherData.hourly.precipitation;
             let totalRain = 0;
             for (let i = 0; i < rainArray.length; i++) {
@@ -593,7 +595,6 @@ function evaluatePixel(samples, scenes) {
                 }
             }
 
-            // 小数点第1位で丸めて表示
             document.getElementById('rainDisplay').innerText = `🌧️ 観測前3日間の雨量: ${totalRain.toFixed(1)} mm`;
 
         } catch (error) {
