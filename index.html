@@ -16,7 +16,6 @@
     </script>
     
     <style>
-        /* ★v1.5修正: 100dvh を追加し、モバイルブラウザでの見切れを防止 */
         body { 
             margin: 0; 
             padding: 0; 
@@ -73,7 +72,15 @@
             opacity: 0.8;
         }
 
-        select, input[type="text"] {
+        /* AI検索ボタン用スタイル */
+        #btnAiSearch { background-color: #6f42c1; }
+        #btnAiSearch:hover { background-color: #59339d; }
+        #btnAiSearch:disabled {
+            background-color: #a894c7;
+            cursor: not-allowed;
+        }
+
+        select, input[type="text"], input[type="password"] {
             padding: 5px;
             font-size: 13px;
             border-radius: 4px;
@@ -92,7 +99,6 @@
             font-weight: bold;
         }
         
-        /* ★v1.5修正: bottomを30pxに上げ、下からの余白を確保 */
         #infoPanel {
             position: absolute;
             bottom: 30px;
@@ -121,7 +127,6 @@
             color: #0056b3; 
         }
 
-        /* ★v1.5修正: 下部マージン追加と、最大高さ＆スクロール設定 */
         .info.legend {
             background: rgba(255, 255, 255, 0.95);
             padding: 10px 15px;
@@ -170,7 +175,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v1.5</span>
+    <span class="app-title">浸水地図 v1.7</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -222,7 +227,10 @@
         <option value="26.212,127.681">沖縄県</option>
     </select>
     
-    <input type="text" id="latLonInput" placeholder="緯度, 経度" onkeypress="handleLatLonEnter(event)" style="width: 110px;">
+    <!-- GeoAI用UI (APIキー保存対応) -->
+    <input type="password" id="geminiApiKey" placeholder="Gemini APIキー" style="width: 120px;">
+    <input type="text" id="aiSearchInput" placeholder="場所をAI検索 (例: 印旛沼)" onkeypress="handleAiSearchEnter(event)" style="width: 160px;">
+    <button id="btnAiSearch" onclick="searchWithGemini()">🤖 検索</button>
     
     <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
 
@@ -257,8 +265,17 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
+    // ==========================================
+    // 初期設定・APIキー復元
+    // ==========================================
+    document.addEventListener("DOMContentLoaded", () => {
+        const savedKey = localStorage.getItem('gemini_api_key_flood');
+        if(savedKey) {
+            document.getElementById('geminiApiKey').value = savedKey;
+        }
+    });
+
     const INSTANCE_ID = "c4013cea-2cf9-4011-8915-47a5efb06b75"; 
-    
     const MIN_ANALYZE_ZOOM = 11;
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -285,10 +302,8 @@
     const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', opt);
     const std = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', opt);
     const photo = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', opt);
-    
     const optEsri = { attribution: 'Esri World Imagery', crossOrigin: "anonymous", maxZoom: 18 };
     const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', optEsri);
-    
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
     });
@@ -324,7 +339,6 @@
             </div>
         `;
         div.innerHTML = html;
-
         div.onclick = function() {
             const content = document.getElementById('legendContent');
             const icon = document.getElementById('legendToggleIcon');
@@ -336,34 +350,26 @@
                 icon.innerText = '[+]';
             }
         };
-
         return div;
     };
     legend.addTo(map);
 
-    // ==========================================
-    // 過去6ヶ月分の期間リストを自動生成
-    // ==========================================
     function populateDateSelect() {
         const select = document.getElementById("targetDateSelect");
         const today = new Date(); 
-        
         let optAuto = document.createElement("option");
         optAuto.value = "auto";
         optAuto.text = "解析対象: 直近 (標準)";
         select.add(optAuto);
-
         for (let i = 0; i < 6; i++) {
             let d = new Date(today.getFullYear(), today.getMonth() - i, 1);
             let year = d.getFullYear();
             let month = d.getMonth() + 1;
-            
             let optLate = document.createElement("option");
             let lastDay = new Date(year, month, 0).getDate();
             optLate.value = new Date(Date.UTC(year, month - 1, lastDay, 23, 59, 59)).toISOString();
             optLate.text = `解析対象: ${year}年${month}月後半`;
             select.add(optLate);
-
             let optEarly = document.createElement("option");
             optEarly.value = new Date(Date.UTC(year, month - 1, 15, 23, 59, 59)).toISOString();
             optEarly.text = `解析対象: ${year}年${month}月前半`;
@@ -372,15 +378,11 @@
     }
     populateDateSelect();
 
-    // ==========================================
-    // ズームレベルに応じたボタン無効化と処理の強制ストップ
-    // ==========================================
     function checkZoomLevel() {
         const btn = document.getElementById('btnAnalyze');
         if (map.getZoom() < MIN_ANALYZE_ZOOM) {
             btn.disabled = true;
             btn.innerText = "🔍 ズームイン必須";
-            
             if (floodLayer) {
                 map.removeLayer(floodLayer);
                 floodLayer = null;
@@ -400,17 +402,12 @@
     // 浸水判定処理
     // ==========================================
     let floodLayer = null;
-
     function analyzeFlood() {
         if (map.getZoom() < MIN_ANALYZE_ZOOM) {
             alert("範囲が広すぎます。もう少しズームインしてから判定してください。");
             return;
         }
-
-        if (floodLayer) {
-            map.removeLayer(floodLayer);
-        }
-
+        if (floodLayer) map.removeLayer(floodLayer);
         document.getElementById('rainDisplay').style.display = 'none';
 
         const selectedValue = document.getElementById("targetDateSelect").value;
@@ -439,51 +436,27 @@
 
         const evalscript = `//VERSION=3
 function setup() {
-    return {
-        input: ["VV", "dataMask"],
-        output: { bands: 4 },
-        mosaicking: "ORBIT"
-    };
+    return { input: ["VV", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
 }
 function evaluatePixel(samples, scenes) {
     if (samples.length < 2) return [0,0,0,0];
-    
-    var latest = samples[0];
-    var latestScene = scenes[0];
-    var past = null;
-    
+    var latest = samples[0]; var latestScene = scenes[0]; var past = null;
     for (var i = 1; i < samples.length; i++) {
         var diffMs = latestScene.date.getTime() - scenes[i].date.getTime();
-        if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffMs >= 864000000) {
-            past = samples[i];
-            break;
-        }
+        if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffMs >= 864000000) { past = samples[i]; break; }
     }
-    
     if (!past) {
         for (var j = 1; j < samples.length; j++) {
             var diffMsFallback = latestScene.date.getTime() - scenes[j].date.getTime();
-            if (diffMsFallback >= 864000000) {
-                past = samples[j];
-                break;
-            }
+            if (diffMsFallback >= 864000000) { past = samples[j]; break; }
         }
     }
-    
-    if (!past) {
-        past = samples[samples.length - 1];
-    }
-    
+    if (!past) past = samples[samples.length - 1];
     if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
-    
     var thresh = ${userThresh}; 
-    
-    var waterLatest = latest.VV < thresh;
-    var waterPast = past.VV < thresh;
-    
+    var waterLatest = latest.VV < thresh; var waterPast = past.VV < thresh;
     if (waterLatest && waterPast) return [0, 0, 1, 0.5]; 
     if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; 
-    
     return [0,0,0,0];
 }`;
 
@@ -509,25 +482,18 @@ function evaluatePixel(samples, scenes) {
         });
 
         floodLayer.addTo(map);
-
-        floodLayer.on('load', function() {
-             checkZoomLevel();
-        });
-        
+        floodLayer.on('load', function() { checkZoomLevel(); });
         floodLayer.on('tileerror', function() {
              checkZoomLevel();
              alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
-             if (floodLayer) {
-                 map.removeLayer(floodLayer);
-                 floodLayer = null;
-             }
+             if (floodLayer) { map.removeLayer(floodLayer); floodLayer = null; }
         });
         
         updateObservationDate(map.getBounds(), targetEndDate, timeRangeStart);
     }
 
     // ==========================================
-    // 最新観測日時の取得 ＆ 過去雨量データの取得連携
+    // 気象・観測日時データ取得
     // ==========================================
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
@@ -554,9 +520,7 @@ function evaluatePixel(samples, scenes) {
                 const dt = new Date(data.features[0].properties.datetime);
                 const fmt = `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日 ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: ${fmt}`;
-                
                 fetchRainData(map.getCenter().lat, map.getCenter().lng, dt);
-                
             } else {
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: データなし`;
             }
@@ -566,9 +530,6 @@ function evaluatePixel(samples, scenes) {
         }
     }
 
-    // ==========================================
-    // Open-Meteo APIによる過去雨量取得機能
-    // ==========================================
     async function fetchRainData(lat, lon, obsDate) {
         document.getElementById('rainDisplay').innerText = `🌧️ 直近3日間の雨量: 計算中...`;
         document.getElementById('rainDisplay').style.display = 'block';
@@ -582,21 +543,14 @@ function evaluatePixel(samples, scenes) {
 
         try {
             const response = await fetch(apiUrl);
-            if (!response.ok) {
-                throw new Error("気象データの取得に失敗しました");
-            }
+            if (!response.ok) throw new Error("気象データの取得に失敗しました");
             const weatherData = await response.json();
-            
             const rainArray = weatherData.hourly.precipitation;
             let totalRain = 0;
             for (let i = 0; i < rainArray.length; i++) {
-                if (rainArray[i] !== null) {
-                    totalRain += rainArray[i];
-                }
+                if (rainArray[i] !== null) totalRain += rainArray[i];
             }
-
             document.getElementById('rainDisplay').innerText = `🌧️ 観測前3日間の雨量: ${totalRain.toFixed(1)} mm`;
-
         } catch (error) {
             console.error(error);
             document.getElementById('rainDisplay').innerText = `🌧️ 観測前3日間の雨量: 取得エラー`;
@@ -604,28 +558,72 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // UI制御関数
+    // ★v1.7 追加: 堅牢なREST APIによるGeoAI検索機能
     // ==========================================
+    async function searchWithGemini() {
+        const apiKey = document.getElementById('geminiApiKey').value.trim();
+        const query = document.getElementById('aiSearchInput').value.trim();
+        
+        if (!apiKey) {
+            alert("Gemini APIキーを入力してください。");
+            return;
+        }
+        if (!query) {
+            alert("検索したい場所やテキストを入力してください。");
+            return;
+        }
+
+        // 次回以降のためにAPIキーをブラウザに保存
+        localStorage.setItem('gemini_api_key_flood', apiKey);
+
+        const btn = document.getElementById('btnAiSearch');
+        btn.innerText = "⏳ 検索中...";
+        btn.disabled = true;
+
+        const prompt = `あなたは優秀な地理情報アシスタントです。以下のテキストからユーザーが見たい対象の場所を推測し、その中心座標（緯度・経度）をJSON形式で返してください。
+        テキスト: "${query}"
+        出力形式: {"lat": 緯度, "lon": 経度}
+        ※Markdown記法や余計な説明は一切含めず、純粋なJSON文字列のみを出力してください。`;
+
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { response_mime_type: "application/json" } 
+                })
+            });
+            
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+            
+            const text = data.candidates[0].content.parts[0].text;
+            const coords = JSON.parse(text);
+            
+            if (coords.lat && coords.lon) {
+                map.setView([coords.lat, coords.lon], 13);
+            } else {
+                throw new Error("座標データが正しく取得できませんでした");
+            }
+            
+        } catch (error) {
+            console.error(error);
+            alert("AIによる場所の特定に失敗しました。APIキーや入力内容を確認してください。\n詳細: " + error.message);
+        } finally {
+            btn.innerText = "🤖 検索";
+            btn.disabled = false;
+        }
+    }
+
+    function handleAiSearchEnter(event) {
+        if (event.key === 'Enter') searchWithGemini();
+    }
+
     function changePref() {
         const select = document.getElementById("prefSelect");
         const val = select.value.split(","); 
         map.setView([parseFloat(val[0]), parseFloat(val[1])], 11);
-    }
-
-    function jumpToCoordinates() {
-        const inputVal = document.getElementById("latLonInput").value;
-        if (!inputVal) return;
-        const parts = inputVal.replace(/,/g, ' ').trim().split(/\s+/);
-        if (parts.length >= 2) {
-            const lat = parseFloat(parts[0]);
-            const lon = parseFloat(parts[1]);
-            if (!isNaN(lat) && !isNaN(lon)) {
-                map.setView([lat, lon], 15);
-            }
-        }
-    }
-    function handleLatLonEnter(event) {
-        if (event.key === 'Enter') jumpToCoordinates();
     }
 
     let locationMarker = null;
