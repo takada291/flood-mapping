@@ -175,7 +175,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v1.7</span>
+    <span class="app-title">浸水地図 v1.8</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -227,9 +227,9 @@
         <option value="26.212,127.681">沖縄県</option>
     </select>
     
-    <!-- GeoAI用UI (APIキー保存対応) -->
+    <!-- GeoAI用UI (APIキー保存対応 & v1.8 九頭竜湖に変更) -->
     <input type="password" id="geminiApiKey" placeholder="Gemini APIキー" style="width: 120px;">
-    <input type="text" id="aiSearchInput" placeholder="場所をAI検索 (例: 九頭竜湖)" onkeypress="handleAiSearchEnter(event)" style="width: 160px;">
+    <input type="text" id="aiSearchInput" placeholder="場所をAI検索 (例: 九頭竜湖)" onkeypress="handleAiSearchEnter(event)" style="width: 180px;">
     <button id="btnAiSearch" onclick="searchWithGemini()">🤖 検索</button>
     
     <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
@@ -558,7 +558,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v1.7 追加: 堅牢なREST APIによるGeoAI検索機能
+    // ★v1.8 修正: モデル名を最新版(gemini-1.5-flash-latest)に変更
     // ==========================================
     async function searchWithGemini() {
         const apiKey = document.getElementById('geminiApiKey').value.trim();
@@ -586,7 +586,8 @@ function evaluatePixel(samples, scenes) {
         ※Markdown記法や余計な説明は一切含めず、純粋なJSON文字列のみを出力してください。`;
 
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+            // エラー対策としてモデル指定を gemini-1.5-flash-latest に変更
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
