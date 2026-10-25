@@ -72,7 +72,6 @@
             opacity: 0.8;
         }
 
-        /* AI検索ボタン用スタイル */
         #btnAiSearch { background-color: #6f42c1; }
         #btnAiSearch:hover { background-color: #59339d; }
         #btnAiSearch:disabled {
@@ -175,7 +174,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v1.8</span>
+    <span class="app-title">浸水地図 v1.9</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -227,7 +226,6 @@
         <option value="26.212,127.681">沖縄県</option>
     </select>
     
-    <!-- GeoAI用UI (APIキー保存対応 & v1.8 九頭竜湖に変更) -->
     <input type="password" id="geminiApiKey" placeholder="Gemini APIキー" style="width: 120px;">
     <input type="text" id="aiSearchInput" placeholder="場所をAI検索 (例: 九頭竜湖)" onkeypress="handleAiSearchEnter(event)" style="width: 180px;">
     <button id="btnAiSearch" onclick="searchWithGemini()">🤖 検索</button>
@@ -249,7 +247,6 @@
         </label>
     </div>
 
-    <!-- 浸水判定ボタン -->
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
 </div>
 
@@ -265,9 +262,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    // ==========================================
-    // 初期設定・APIキー復元
-    // ==========================================
     document.addEventListener("DOMContentLoaded", () => {
         const savedKey = localStorage.getItem('gemini_api_key_flood');
         if(savedKey) {
@@ -295,9 +289,6 @@
     L.control.zoom({ position: 'topleft' }).addTo(map);
     L.control.scale({ imperial: false, metric: true, position: 'bottomleft' }).addTo(map);
 
-    // ==========================================
-    // ベースマップ設定
-    // ==========================================
     const opt = { attribution: '地理院タイル', crossOrigin: "anonymous", maxZoom: 18 };
     const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', opt);
     const std = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', opt);
@@ -398,9 +389,6 @@
     map.on('zoomend', checkZoomLevel);
     checkZoomLevel();
 
-    // ==========================================
-    // 浸水判定処理
-    // ==========================================
     let floodLayer = null;
     function analyzeFlood() {
         if (map.getZoom() < MIN_ANALYZE_ZOOM) {
@@ -492,9 +480,6 @@ function evaluatePixel(samples, scenes) {
         updateObservationDate(map.getBounds(), targetEndDate, timeRangeStart);
     }
 
-    // ==========================================
-    // 気象・観測日時データ取得
-    // ==========================================
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
@@ -558,7 +543,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v1.8 修正: モデル名を最新版(gemini-1.5-flash-latest)に変更
+    // ★v1.9 修正: モデル名を gemini-1.5-flash に変更
     // ==========================================
     async function searchWithGemini() {
         const apiKey = document.getElementById('geminiApiKey').value.trim();
@@ -573,7 +558,6 @@ function evaluatePixel(samples, scenes) {
             return;
         }
 
-        // 次回以降のためにAPIキーをブラウザに保存
         localStorage.setItem('gemini_api_key_flood', apiKey);
 
         const btn = document.getElementById('btnAiSearch');
@@ -586,8 +570,8 @@ function evaluatePixel(samples, scenes) {
         ※Markdown記法や余計な説明は一切含めず、純粋なJSON文字列のみを出力してください。`;
 
         try {
-            // エラー対策としてモデル指定を gemini-1.5-flash-latest に変更
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+            // ★エンドポイントのモデル名を gemini-1.5-flash に修正
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
