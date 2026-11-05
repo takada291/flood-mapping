@@ -543,9 +543,9 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.1: AI通信処理 (3.6最優先 -> 旧キー用2.5自動フォールバック)
+    // ★v2.1: AI通信処理 (3.8最優先 -> 3.6自動フォールバック)
     // ==========================================
-    const MODEL_CANDIDATES = ["gemini-3.6-flash", "gemini-2.5-flash"];
+    const MODEL_CANDIDATES = ["gemini-3.8-flash", "gemini-3.6-flash"];
 
     async function fetchWithTimeout(url, options, timeoutMs = 45000) {
         const controller = new AbortController();
