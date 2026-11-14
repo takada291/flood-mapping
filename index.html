@@ -24,6 +24,7 @@
             height: 100vh; 
             height: 100dvh; 
             background: #fff; 
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
         }
         #controls {
             padding: 8px;
@@ -56,28 +57,30 @@
             font-weight: bold;
             white-space: nowrap;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            transition: background-color 0.15s;
         }
         button:hover { background-color: #0056b3; }
+        button:disabled {
+            background-color: #6c757d !important;
+            cursor: not-allowed;
+            box-shadow: none;
+            opacity: 0.75;
+        }
         
         #btnGps { background-color: #28a745; }
         #btnGps:hover { background-color: #218838; }
 
         #btnAnalyze { background-color: #dc3545; }
         #btnAnalyze:hover { background-color: #c82333; }
-        
-        #btnAnalyze:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-            box-shadow: none;
-            opacity: 0.8;
-        }
+
+        #btnRefine { background-color: #e67e22; }
+        #btnRefine:hover { background-color: #d35400; }
+
+        #btnResetRefine { background-color: #17a2b8; display: none; }
+        #btnResetRefine:hover { background-color: #138496; }
 
         #btnAiSearch { background-color: #6f42c1; }
         #btnAiSearch:hover { background-color: #59339d; }
-        #btnAiSearch:disabled {
-            background-color: #a894c7;
-            cursor: not-allowed;
-        }
 
         select, input[type="text"], input[type="password"] {
             padding: 5px;
@@ -107,13 +110,14 @@
             flex-direction: column;
             gap: 5px;
             pointer-events: none; 
+            align-items: flex-end;
         }
 
         .info-box {
             font-size: 13px; 
             font-weight: bold;
             color: #d32f2f;
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.92);
             padding: 5px 10px;
             border-radius: 12px;
             border: 1px solid #ccc;
@@ -124,6 +128,53 @@
         
         #rainDisplay {
             color: #0056b3; 
+        }
+
+        /* AIリファイン結果パネル */
+        #aiRefinePanel {
+            position: absolute;
+            top: 12px;
+            right: 55px;
+            z-index: 1000;
+            width: 310px;
+            max-width: calc(100vw - 80px);
+            background: rgba(255, 255, 255, 0.96);
+            border: 2px solid #e67e22;
+            border-radius: 8px;
+            padding: 10px 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            font-size: 12.5px;
+            line-height: 1.5;
+            color: #222;
+            display: none;
+        }
+        .refine-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            color: #d35400;
+            border-bottom: 1px solid #f0d0b0;
+            padding-bottom: 5px;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .refine-close {
+            cursor: pointer;
+            font-size: 14px;
+            color: #888;
+            padding: 0 4px;
+        }
+        .refine-close:hover { color: #333; }
+        .refine-stats {
+            background: #fff8f0;
+            border: 1px solid #fae5d3;
+            border-radius: 4px;
+            padding: 5px 8px;
+            margin-bottom: 6px;
+            font-weight: bold;
+            color: #a04000;
+            font-size: 11.5px;
         }
 
         .info.legend {
@@ -174,7 +225,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v2.2</span>
+    <span class="app-title">浸水地図 v2.3</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -248,10 +299,22 @@
     </div>
 
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
+    <button id="btnRefine" onclick="refineFloodWithAI()" disabled title="微小ノイズや道路・山間部の誤検知を除去してAI解説を表示します">✨ AIリファイン</button>
+    <button id="btnResetRefine" onclick="toggleRefineView()">↩️ 元に戻す</button>
 </div>
 
 <div id="map">
     <div class="crosshair"></div>
+
+    <!-- AIリファイン解説パネル -->
+    <div id="aiRefinePanel">
+        <div class="refine-header">
+            <span>✨ AIリファイン結果</span>
+            <span class="refine-close" onclick="document.getElementById('aiRefinePanel').style.display='none'">✕</span>
+        </div>
+        <div id="refineStatsBox" class="refine-stats"></div>
+        <div id="refineCommentBox"></div>
+    </div>
     
     <div id="infoPanel">
         <div id="rainDisplay" class="info-box" style="display: none;">🌧️ 観測前3日間の雨量: 未取得</div>
@@ -296,7 +359,7 @@
     const optEsri = { attribution: 'Esri World Imagery', crossOrigin: "anonymous", maxZoom: 18 };
     const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', optEsri);
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+        attribution: '&copy; OpenStreetMap contributors', crossOrigin: "anonymous", maxZoom: 19
     });
 
     pale.addTo(map);
@@ -324,8 +387,7 @@
                 <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たに水で覆われた場所 (浸水等)<br>
                 <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
                     ※表示されている画面範囲で判定を行います。<br>
-                    ※ビル街・山間部はノイズが出やすいためご注意ください。<br>
-                    ※感度を上げると細かい水溜りも拾いますがノイズも増えます。
+                    ※「✨ AIリファイン」を押すと、道路や山間部の細かいノイズを除去して見やすく補正します。
                 </div>
             </div>
         `;
@@ -369,11 +431,29 @@
     }
     populateDateSelect();
 
+    let floodLayer = null;
+    let refinedOverlay = null;
+    let isShowingRefined = false;
+    let lastTimeRange = "";
+    let lastB64Evalscript = "";
+
+    function clearRefinedState() {
+        if (refinedOverlay) {
+            map.removeLayer(refinedOverlay);
+            refinedOverlay = null;
+        }
+        isShowingRefined = false;
+        document.getElementById('btnResetRefine').style.display = 'none';
+        document.getElementById('aiRefinePanel').style.display = 'none';
+    }
+
     function checkZoomLevel() {
         const btn = document.getElementById('btnAnalyze');
         if (map.getZoom() < MIN_ANALYZE_ZOOM) {
             btn.disabled = true;
             btn.innerText = "🔍 ズームイン必須";
+            document.getElementById('btnRefine').disabled = true;
+            clearRefinedState();
             if (floodLayer) {
                 map.removeLayer(floodLayer);
                 floodLayer = null;
@@ -389,14 +469,15 @@
     map.on('zoomend', checkZoomLevel);
     checkZoomLevel();
 
-    let floodLayer = null;
     function analyzeFlood() {
         if (map.getZoom() < MIN_ANALYZE_ZOOM) {
             alert("範囲が広すぎます。もう少しズームインしてから判定してください。");
             return;
         }
+        clearRefinedState();
         if (floodLayer) map.removeLayer(floodLayer);
         document.getElementById('rainDisplay').style.display = 'none';
+        document.getElementById('btnRefine').disabled = true;
 
         const selectedValue = document.getElementById("targetDateSelect").value;
         let targetEndDate = new Date();
@@ -456,6 +537,9 @@ function evaluatePixel(samples, scenes) {
             return;
         }
 
+        lastTimeRange = timeRange;
+        lastB64Evalscript = b64Evalscript;
+
         document.getElementById('btnAnalyze').innerText = "⏳ 判定中...";
         
         floodLayer = L.tileLayer.wms(`https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}`, {
@@ -466,11 +550,15 @@ function evaluatePixel(samples, scenes) {
             EVALSCRIPT: b64Evalscript,
             maxZoom: 18,
             zIndex: 10,
+            crossOrigin: 'anonymous',
             attribution: '&copy; Copernicus Sentinel data'
         });
 
         floodLayer.addTo(map);
-        floodLayer.on('load', function() { checkZoomLevel(); });
+        floodLayer.on('load', function() {
+            checkZoomLevel();
+            document.getElementById('btnRefine').disabled = false;
+        });
         floodLayer.on('tileerror', function() {
              checkZoomLevel();
              alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
@@ -478,6 +566,356 @@ function evaluatePixel(samples, scenes) {
         });
         
         updateObservationDate(map.getBounds(), targetEndDate, timeRangeStart);
+    }
+
+    // ==========================================
+    // ★v2.3 新機能: AIリファイン (微小・道路ノイズ除去 ＆ Gemini視覚判定)
+    // ==========================================
+    function captureBaseMapCanvas(width, height) {
+        const mapEl = document.getElementById('map');
+        const mapRect = mapEl.getBoundingClientRect();
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, width, height);
+
+        const tilePane = mapEl.querySelector('.leaflet-tile-pane');
+        if (!tilePane) return canvas;
+
+        const layers = tilePane.querySelectorAll('.leaflet-layer');
+        layers.forEach(layerEl => {
+            if (floodLayer && floodLayer._container === layerEl) return;
+            const tiles = layerEl.querySelectorAll('img.leaflet-tile');
+            tiles.forEach(tile => {
+                if (!tile.complete || tile.naturalWidth === 0) return;
+                const rect = tile.getBoundingClientRect();
+                const x = rect.left - mapRect.left;
+                const y = rect.top - mapRect.top;
+                try { ctx.drawImage(tile, x, y, rect.width, rect.height); } catch (e) {}
+            });
+        });
+        return canvas;
+    }
+
+    async function captureFloodCanvas(width, height) {
+        const mapEl = document.getElementById('map');
+        const mapRect = mapEl.getBoundingClientRect();
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        let drawnCount = 0;
+        if (floodLayer && floodLayer._container) {
+            const tiles = floodLayer._container.querySelectorAll('img.leaflet-tile');
+            tiles.forEach(tile => {
+                if (!tile.complete || tile.naturalWidth === 0) return;
+                const rect = tile.getBoundingClientRect();
+                const x = rect.left - mapRect.left;
+                const y = rect.top - mapRect.top;
+                try {
+                    ctx.drawImage(tile, x, y, rect.width, rect.height);
+                    drawnCount++;
+                } catch (e) {}
+            });
+        }
+
+        // 万一タイルから直接取得できなかった場合はWMS GetMapで単一画像として取得
+        if (drawnCount === 0 && lastTimeRange && lastB64Evalscript) {
+            const b = map.getBounds();
+            const bboxStr = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
+            const wmsUrl = `https://sh.dataspace.copernicus.eu/ogc/wms/${INSTANCE_ID}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=SAR-CHANGE&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:4326&BBOX=${bboxStr}&WIDTH=${width}&HEIGHT=${height}&TIME=${encodeURIComponent(lastTimeRange)}&EVALSCRIPT=${encodeURIComponent(lastB64Evalscript)}`;
+            const resp = await fetch(wmsUrl);
+            const blob = await resp.blob();
+            const bmp = await createImageBitmap(blob);
+            ctx.drawImage(bmp, 0, 0, width, height);
+        }
+        return canvas;
+    }
+
+    // ステップ1: モルフォロジー処理＋連結成分ラベリングによる微小ノイズ・細長い道路反射の除去
+    function filterSpeckleAndRoadNoise(floodCanvas, minRedArea, minBlueArea) {
+        const w = floodCanvas.width;
+        const h = floodCanvas.height;
+        const ctx = floodCanvas.getContext('2d', { willReadFrequently: true });
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const data = imgData.data;
+        const totalPx = w * h;
+
+        // 0: 透明, 1: 赤(浸水), 2: 青(常時水域)
+        const typeGrid = new Uint8Array(totalPx);
+        for (let i = 0; i < totalPx; i++) {
+            const idx = i * 4;
+            const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
+            if (a > 40) {
+                if (r > 150 && g < 100 && b < 100) typeGrid[i] = 1;
+                else if (b > 150 && r < 100 && g < 100) typeGrid[i] = 2;
+            }
+        }
+
+        // 3x3近傍密度フィルタ（1〜2px幅の道路反射や孤立点を削る）
+        const cleanedGrid = new Uint8Array(totalPx);
+        for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+                const i = y * w + x;
+                const t = typeGrid[i];
+                if (t === 0) continue;
+                let sameCount = 0;
+                for (let dy = -1; dy <= 1; dy++) {
+                    const rowOffset = (y + dy) * w + x;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (typeGrid[rowOffset + dx] === t) sameCount++;
+                    }
+                }
+                // 自身を含め3x3内で4ピクセル以上塊になっている部分のみ残す
+                if (sameCount >= 4) cleanedGrid[i] = t;
+            }
+        }
+
+        // 連結成分ラベリング (BFS) で面積・形状を計測
+        const visited = new Uint8Array(totalPx);
+        const clusters = [];
+        const queue = new Int32Array(totalPx);
+
+        for (let i = 0; i < totalPx; i++) {
+            const t = cleanedGrid[i];
+            if (t === 0 || visited[i]) continue;
+
+            let head = 0, tail = 0;
+            queue[tail++] = i;
+            visited[i] = 1;
+
+            const pixels = [];
+            let minX = w, maxX = 0, minY = h, maxY = 0;
+
+            while (head < tail) {
+                const curr = queue[head++];
+                pixels.push(curr);
+                const cx = curr % w;
+                const cy = (curr / w) | 0;
+                if (cx < minX) minX = cx;
+                if (cx > maxX) maxX = cx;
+                if (cy < minY) minY = cy;
+                if (cy > maxY) maxY = cy;
+
+                // 4近傍探索
+                const neighbors = [curr - 1, curr + 1, curr - w, curr + w];
+                for (let n = 0; n < 4; n++) {
+                    const ni = neighbors[n];
+                    if (ni >= 0 && ni < totalPx && !visited[ni] && cleanedGrid[ni] === t) {
+                        const nx = ni % w;
+                        if (Math.abs(nx - cx) <= 1) {
+                            visited[ni] = 1;
+                            queue[tail++] = ni;
+                        }
+                    }
+                }
+            }
+
+            const area = pixels.length;
+            const bw = maxX - minX + 1;
+            const bh = maxY - minY + 1;
+            const aspect = Math.max(bw / bh, bh / bw);
+            const fillRatio = area / (bw * bh);
+
+            clusters.push({
+                type: t,
+                pixels,
+                area,
+                cx: (minX + maxX) / 2,
+                cy: (minY + maxY) / 2,
+                aspect,
+                fillRatio
+            });
+        }
+
+        // 第1段階フィルタ適用
+        let removedCount = 0;
+        const survivingClusters = [];
+        for (const c of clusters) {
+            const minA = (c.type === 1) ? minRedArea : minBlueArea;
+            // 面積が小さすぎる塊、または道路沿い等の極端に細長くスカスカなノイズを除去
+            const isThinRoadArtifact = (c.type === 1 && c.area < minRedArea * 4 && c.aspect > 4.5 && c.fillRatio < 0.25);
+            if (c.area < minA || isThinRoadArtifact) {
+                removedCount++;
+            } else {
+                survivingClusters.push(c);
+            }
+        }
+
+        return { survivingClusters, removedCount, width: w, height: h };
+    }
+
+    function renderClustersToCanvas(clusters, width, height, excludeZones = [], minRedArea = 28) {
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = width;
+        outCanvas.height = height;
+        const ctx = outCanvas.getContext('2d');
+        const imgData = ctx.createImageData(width, height);
+        const out = imgData.data;
+
+        let aiRemovedCount = 0;
+
+        for (const c of clusters) {
+            // 赤色（新規浸水候補）がAI指定の誤検知ゾーン（山間部斜面や道路網）に含まれる場合、より厳しい面積基準を適用
+            if (c.type === 1 && excludeZones.length > 0) {
+                const normX = (c.cx / width) * 1000;
+                const normY = (c.cy / height) * 1000;
+                const inExclude = excludeZones.some(z =>
+                    normY >= z.ymin && normY <= z.ymax && normX >= z.xmin && normX <= z.xmax
+                );
+                if (inExclude && c.area < minRedArea * 5) {
+                    aiRemovedCount++;
+                    continue;
+                }
+            }
+
+            const r = (c.type === 1) ? 255 : 0;
+            const g = 0;
+            const b = (c.type === 2) ? 255 : 0;
+            const a = (c.type === 1) ? 185 : 135;
+
+            for (let i = 0; i < c.pixels.length; i++) {
+                const pIdx = c.pixels[i] * 4;
+                out[pIdx] = r;
+                out[pIdx + 1] = g;
+                out[pIdx + 2] = b;
+                out[pIdx + 3] = a;
+            }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        return { canvas: outCanvas, aiRemovedCount };
+    }
+
+    async function refineFloodWithAI() {
+        const apiKey = document.getElementById('geminiApiKey').value.trim();
+        if (!apiKey) {
+            alert("AIリファイン機能を使用するには、Gemini APIキーを入力してください。");
+            return;
+        }
+        if (!floodLayer) {
+            alert("先に「🌊 浸水判定」を実行してください。");
+            return;
+        }
+
+        localStorage.setItem('gemini_api_key_flood', apiKey);
+
+        const btnRefine = document.getElementById('btnRefine');
+        btnRefine.innerText = "⏳ AIリファイン中...";
+        btnRefine.disabled = true;
+
+        try {
+            const mapSize = map.getSize();
+            const w = Math.round(mapSize.x);
+            const h = Math.round(mapSize.y);
+
+            // 感度に応じた最小面積閾値（高感度ほどノイズが多いため閾値を引き上げる）
+            let userThresh = 0.03;
+            const radios = document.getElementsByName('threshRadio');
+            for (let i = 0; i < radios.length; i++) {
+                if (radios[i].checked) { userThresh = parseFloat(radios[i].value); break; }
+            }
+            const minRedArea = userThresh >= 0.1 ? 42 : (userThresh >= 0.075 ? 30 : 20);
+            const minBlueArea = 16;
+
+            // 1. 画面上の浸水レイヤーを取得して第1段階（ピクセル・形状）フィルタリング
+            const rawFloodCanvas = await captureFloodCanvas(w, h);
+            const step1 = filterSpeckleAndRoadNoise(rawFloodCanvas, minRedArea, minBlueArea);
+            const preRender = renderClustersToCanvas(step1.survivingClusters, w, h, [], minRedArea);
+
+            // 2. 背景地図と合成した縮小画像を生成してGeminiへ送信
+            const baseCanvas = captureBaseMapCanvas(w, h);
+            const sendMax = 768;
+            const scale = Math.min(1, sendMax / Math.max(w, h));
+            const compCanvas = document.createElement('canvas');
+            compCanvas.width = Math.round(w * scale);
+            compCanvas.height = Math.round(h * scale);
+            const compCtx = compCanvas.getContext('2d');
+            compCtx.drawImage(baseCanvas, 0, 0, compCanvas.width, compCanvas.height);
+            compCtx.drawImage(preRender.canvas, 0, 0, compCanvas.width, compCanvas.height);
+
+            const base64Image = compCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+
+            const prompt = `あなたは衛星SAR（合成開口レーダー）による浸水解析の専門AIです。
+添付画像は、地図上にSAR解析レイヤー（青色＝常時水域、赤色＝新規浸水候補またはレーダー反射ノイズ）を重ねたものです。
+山間部の急斜面（レーダーシャドウ）や道路・市街地の建物反射による「赤色の誤検知ノイズ」が多く含まれている領域（exclude_zones）を0〜1000の正規化座標 [ymin, xmin, ymax, xmax] で指定し、さらに画面内の実際の水域や浸水シグナルの状況を簡潔に解説してください。
+
+以下のJSON形式のみで出力してください：
+{
+  "exclude_zones": [
+    {"ymin": 0, "xmin": 500, "ymax": 1000, "xmax": 1000, "reason": "山間部の斜面ノイズ"}
+  ],
+  "summary": "山間部および道路沿いの細かい反射ノイズを除外しました。主要な水域は〇〇川沿いおよび沿岸部に分布しています。"
+}`;
+
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                    ]
+                }],
+                generationConfig: { response_mime_type: "application/json" }
+            };
+
+            const aiRes = await callGeminiWithFallback(apiKey, payload);
+            let parsed = { exclude_zones: [], summary: "微小ノイズおよび道路・斜面上の散発的な反射を除去しました。" };
+            try {
+                const cleanJson = aiRes.text.replace(/```json/g, '').replace(/```/g, '').trim();
+                parsed = JSON.parse(cleanJson);
+            } catch (e) {
+                console.warn("JSON parse fallback:", e);
+            }
+
+            const excludeZones = Array.isArray(parsed.exclude_zones) ? parsed.exclude_zones : [];
+            const finalRender = renderClustersToCanvas(step1.survivingClusters, w, h, excludeZones, minRedArea);
+
+            // 3. リファイン済みレイヤーを地図に表示し、元のノイズが多いWMSレイヤーを隠す
+            const refinedDataUrl = finalRender.canvas.toDataURL('image/png');
+            if (refinedOverlay) map.removeLayer(refinedOverlay);
+            refinedOverlay = L.imageOverlay(refinedDataUrl, map.getBounds(), { zIndex: 12, interactive: false }).addTo(map);
+            
+            if (floodLayer && map.hasLayer(floodLayer)) {
+                map.removeLayer(floodLayer);
+            }
+            isShowingRefined = true;
+
+            // 4. 結果パネルと「元に戻す」ボタンの表示
+            const totalRemoved = step1.removedCount + finalRender.aiRemovedCount;
+            document.getElementById('refineStatsBox').innerText = `🧹 除去した微小・道路・斜面ノイズ: ${totalRemoved.toLocaleString()} 箇所`;
+            document.getElementById('refineCommentBox').innerText = parsed.summary || "ノイズ除去が完了しました。";
+            document.getElementById('aiRefinePanel').style.display = 'block';
+
+            const btnReset = document.getElementById('btnResetRefine');
+            btnReset.style.display = 'inline-block';
+            btnReset.innerText = "↩️ 元に戻す";
+
+        } catch (error) {
+            console.error(error);
+            alert("AIリファイン処理中にエラーが発生しました。\n詳細: " + error.message);
+        } finally {
+            btnRefine.innerText = "✨ AIリファイン";
+            btnRefine.disabled = false;
+        }
+    }
+
+    function toggleRefineView() {
+        if (!refinedOverlay || !floodLayer) return;
+        const btnReset = document.getElementById('btnResetRefine');
+        if (isShowingRefined) {
+            map.removeLayer(refinedOverlay);
+            floodLayer.addTo(map);
+            isShowingRefined = false;
+            btnReset.innerText = "✨ リファイン表示へ";
+        } else {
+            if (map.hasLayer(floodLayer)) map.removeLayer(floodLayer);
+            refinedOverlay.addTo(map);
+            isShowingRefined = true;
+            btnReset.innerText = "↩️ 元に戻す";
+        }
     }
 
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
@@ -543,7 +981,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.2: Gemini API 呼び出し共通基盤 (Hydrogen優先・思考LOW固定・フォールバック付き)
+    // Gemini API 呼び出し共通基盤 (Hydrogen優先・思考LOW固定・フォールバック付き)
     // ==========================================
     const MODEL_CANDIDATES = ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-2.5-flash"];
 
@@ -627,7 +1065,6 @@ function evaluatePixel(samples, scenes) {
             const coords = JSON.parse(text);
             
             if (coords.lat && coords.lon) {
-                // 取得した座標へズームレベル13でジャンプ
                 map.setView([coords.lat, coords.lon], 13);
             } else {
                 throw new Error("座標データが正しく取得できませんでした");
