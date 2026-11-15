@@ -136,7 +136,7 @@
             top: 12px;
             right: 55px;
             z-index: 1000;
-            width: 310px;
+            width: 320px;
             max-width: calc(100vw - 80px);
             background: rgba(255, 255, 255, 0.96);
             border: 2px solid #e67e22;
@@ -225,7 +225,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v2.3</span>
+    <span class="app-title">浸水地図 v2.4</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -299,7 +299,7 @@
     </div>
 
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
-    <button id="btnRefine" onclick="refineFloodWithAI()" disabled title="微小ノイズや道路・山間部の誤検知を除去してAI解説を表示します">✨ AIリファイン</button>
+    <button id="btnRefine" onclick="refineFloodWithAI()" disabled title="標高タイルとAI解析により、微小ノイズや道路・山間部の誤検知を除去します">✨ AIリファイン</button>
     <button id="btnResetRefine" onclick="toggleRefineView()">↩️ 元に戻す</button>
 </div>
 
@@ -387,7 +387,7 @@
                 <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たに水で覆われた場所 (浸水等)<br>
                 <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
                     ※表示されている画面範囲で判定を行います。<br>
-                    ※「✨ AIリファイン」を押すと、道路や山間部の細かいノイズを除去して見やすく補正します。
+                    ※「✨ AIリファイン」を押すと、地理院標高データとAI解析により山間部の急斜面や道路のノイズを除去します。
                 </div>
             </div>
         `;
@@ -569,7 +569,114 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.3 新機能: AIリファイン (微小・道路ノイズ除去 ＆ Gemini視覚判定)
+    // ★v2.4: 国土地理院 標高タイル(DEM)からの傾斜角マップ生成
+    // ==========================================
+    async function buildSlopeMapFromGSI(width, height) {
+        const demZoom = Math.min(14, Math.max(11, map.getZoom()));
+        const bounds = map.getBounds();
+        const topLeft = map.project(bounds.getNorthWest(), demZoom);
+        const bottomRight = map.project(bounds.getSouthEast(), demZoom);
+
+        const minTileX = Math.floor(topLeft.x / 256);
+        const minTileY = Math.floor(topLeft.y / 256);
+        const maxTileX = Math.floor(bottomRight.x / 256);
+        const maxTileY = Math.floor(bottomRight.y / 256);
+
+        const tw = 256;
+        const demW = (maxTileX - minTileX + 1) * tw;
+        const demH = (maxTileY - minTileY + 1) * tw;
+
+        const demCanvas = document.createElement('canvas');
+        demCanvas.width = demW;
+        demCanvas.height = demH;
+        const demCtx = demCanvas.getContext('2d', { willReadFrequently: true });
+
+        const fetchTile = (tx, ty) => new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${demZoom}/${tx}/${ty}.png`;
+        });
+
+        const promises = [];
+        for (let tx = minTileX; tx <= maxTileX; tx++) {
+            for (let ty = minTileY; ty <= maxTileY; ty++) {
+                promises.push(fetchTile(tx, ty).then(img => {
+                    if (img) {
+                        demCtx.drawImage(img, (tx - minTileX) * tw, (ty - minTileY) * tw);
+                    }
+                }));
+            }
+        }
+        await Promise.all(promises);
+
+        const rawData = demCtx.getImageData(0, 0, demW, demH).data;
+        const eleGrid = new Float32Array(demW * demH);
+        eleGrid.fill(NaN);
+
+        for (let i = 0; i < demW * demH; i++) {
+            const idx = i * 4;
+            const r = rawData[idx], g = rawData[idx + 1], b = rawData[idx + 2], a = rawData[idx + 3];
+            if (a === 0 || (r === 128 && g === 0 && b === 0)) continue;
+            const v = (r << 16) + (g << 8) + b;
+            eleGrid[i] = (v < 8388608) ? v * 0.01 : (v - 16777216) * 0.01;
+        }
+
+        // DEMピクセルあたりの地上距離(m)
+        const centerLat = map.getCenter().lat;
+        const resMeters = (40075016.686 * Math.cos(centerLat * Math.PI / 180)) / (256 * Math.pow(2, demZoom));
+
+        // 3x3近傍の最大高低差から局所傾斜角(度)を算出（尾根や谷筋の斜面ノイズも確実に捉える）
+        const demSlope = new Float32Array(demW * demH);
+        for (let y = 1; y < demH - 1; y++) {
+            for (let x = 1; x < demW - 1; x++) {
+                const cIdx = y * demW + x;
+                const cEle = eleGrid[cIdx];
+                if (isNaN(cEle)) continue;
+
+                let minE = cEle, maxE = cEle;
+                for (let dy = -1; dy <= 1; dy++) {
+                    const rowOffset = (y + dy) * demW + x;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const e = eleGrid[rowOffset + dx];
+                        if (!isNaN(e)) {
+                            if (e < minE) minE = e;
+                            if (e > maxE) maxE = e;
+                        }
+                    }
+                }
+                const diff = maxE - minE;
+                const slopeRad = Math.atan(diff / (2.0 * resMeters));
+                demSlope[cIdx] = slopeRad * (180 / Math.PI);
+            }
+        }
+
+        // 画面ピクセル(width x height)に対応する傾斜角配列へマッピング
+        const screenSlope = new Float32Array(width * height);
+        const spanX = bottomRight.x - topLeft.x;
+        const spanY = bottomRight.y - topLeft.y;
+        const baseX = minTileX * tw;
+        const baseY = minTileY * tw;
+
+        for (let py = 0; py < height; py++) {
+            const projY = topLeft.y + (py / height) * spanY;
+            const dy = Math.max(0, Math.min(demH - 1, Math.floor(projY - baseY)));
+            const demRowOffset = dy * demW;
+            const screenRowOffset = py * width;
+
+            for (let px = 0; px < width; px++) {
+                const projX = topLeft.x + (px / width) * spanX;
+                const dx = Math.max(0, Math.min(demW - 1, Math.floor(projX - baseX)));
+                screenSlope[screenRowOffset + px] = demSlope[demRowOffset + dx];
+            }
+        }
+
+        return screenSlope;
+    }
+
+    // ==========================================
+    // AIリファイン (標高DEMによる急斜面除去 ＋ 微小・道路ノイズ除去 ＋ Gemini視覚判定)
     // ==========================================
     function captureBaseMapCanvas(width, height) {
         const mapEl = document.getElementById('map');
@@ -622,7 +729,6 @@ function evaluatePixel(samples, scenes) {
             });
         }
 
-        // 万一タイルから直接取得できなかった場合はWMS GetMapで単一画像として取得
         if (drawnCount === 0 && lastTimeRange && lastB64Evalscript) {
             const b = map.getBounds();
             const bboxStr = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
@@ -635,8 +741,8 @@ function evaluatePixel(samples, scenes) {
         return canvas;
     }
 
-    // ステップ1: モルフォロジー処理＋連結成分ラベリングによる微小ノイズ・細長い道路反射の除去
-    function filterSpeckleAndRoadNoise(floodCanvas, minRedArea, minBlueArea) {
+    // ステップ1: 標高DEMによる急斜面カット ＋ モルフォロジー処理 ＋ 連結成分ラベリング
+    function filterSpeckleSlopeAndRoadNoise(floodCanvas, screenSlope, minRedArea, minBlueArea) {
         const w = floodCanvas.width;
         const h = floodCanvas.height;
         const ctx = floodCanvas.getContext('2d', { willReadFrequently: true });
@@ -645,13 +751,20 @@ function evaluatePixel(samples, scenes) {
         const totalPx = w * h;
 
         // 0: 透明, 1: 赤(浸水), 2: 青(常時水域)
+        // ※急斜面上のピクセルを事前にカットし、山肌のノイズ塊と平地のシグナルが結合するのを防ぐ
         const typeGrid = new Uint8Array(totalPx);
         for (let i = 0; i < totalPx; i++) {
             const idx = i * 4;
             const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
             if (a > 40) {
-                if (r > 150 && g < 100 && b < 100) typeGrid[i] = 1;
-                else if (b > 150 && r < 100 && g < 100) typeGrid[i] = 2;
+                const slope = screenSlope ? screenSlope[i] : 0;
+                if (r > 150 && g < 100 && b < 100) {
+                    // 赤(新規浸水)は傾斜6.5度以上の斜面では水が溜まらないため事前除外
+                    if (slope < 6.5) typeGrid[i] = 1;
+                } else if (b > 150 && r < 100 && g < 100) {
+                    // 青(常時水域)も傾斜9.0度以上の山肌はレーダーシャドウのため事前除外
+                    if (slope < 9.0) typeGrid[i] = 2;
+                }
             }
         }
 
@@ -669,12 +782,11 @@ function evaluatePixel(samples, scenes) {
                         if (typeGrid[rowOffset + dx] === t) sameCount++;
                     }
                 }
-                // 自身を含め3x3内で4ピクセル以上塊になっている部分のみ残す
                 if (sameCount >= 4) cleanedGrid[i] = t;
             }
         }
 
-        // 連結成分ラベリング (BFS) で面積・形状を計測
+        // 連結成分ラベリング (BFS) で面積・形状・平均傾斜角を計測
         const visited = new Uint8Array(totalPx);
         const clusters = [];
         const queue = new Int32Array(totalPx);
@@ -689,10 +801,13 @@ function evaluatePixel(samples, scenes) {
 
             const pixels = [];
             let minX = w, maxX = 0, minY = h, maxY = 0;
+            let slopeSum = 0;
 
             while (head < tail) {
                 const curr = queue[head++];
                 pixels.push(curr);
+                if (screenSlope) slopeSum += screenSlope[curr];
+
                 const cx = curr % w;
                 const cy = (curr / w) | 0;
                 if (cx < minX) minX = cx;
@@ -700,7 +815,6 @@ function evaluatePixel(samples, scenes) {
                 if (cy < minY) minY = cy;
                 if (cy > maxY) maxY = cy;
 
-                // 4近傍探索
                 const neighbors = [curr - 1, curr + 1, curr - w, curr + w];
                 for (let n = 0; n < 4; n++) {
                     const ni = neighbors[n];
@@ -719,6 +833,7 @@ function evaluatePixel(samples, scenes) {
             const bh = maxY - minY + 1;
             const aspect = Math.max(bw / bh, bh / bw);
             const fillRatio = area / (bw * bh);
+            const avgSlope = slopeSum / area;
 
             clusters.push({
                 type: t,
@@ -727,25 +842,34 @@ function evaluatePixel(samples, scenes) {
                 cx: (minX + maxX) / 2,
                 cy: (minY + maxY) / 2,
                 aspect,
-                fillRatio
+                fillRatio,
+                avgSlope
             });
         }
 
-        // 第1段階フィルタ適用
-        let removedCount = 0;
+        // フィルタ適用（面積・道路形状・平均傾斜角）
+        let removedSpeckleCount = 0;
+        let removedSlopeCount = 0;
         const survivingClusters = [];
+
         for (const c of clusters) {
+            // 標高タイルによる平均傾斜角チェック（山裾に残った塊ノイズを除去）
+            const isSteepSlope = (c.type === 1 && c.avgSlope >= 4.2) || (c.type === 2 && c.avgSlope >= 6.5);
+            if (isSteepSlope) {
+                removedSlopeCount++;
+                continue;
+            }
+
             const minA = (c.type === 1) ? minRedArea : minBlueArea;
-            // 面積が小さすぎる塊、または道路沿い等の極端に細長くスカスカなノイズを除去
             const isThinRoadArtifact = (c.type === 1 && c.area < minRedArea * 4 && c.aspect > 4.5 && c.fillRatio < 0.25);
             if (c.area < minA || isThinRoadArtifact) {
-                removedCount++;
+                removedSpeckleCount++;
             } else {
                 survivingClusters.push(c);
             }
         }
 
-        return { survivingClusters, removedCount, width: w, height: h };
+        return { survivingClusters, removedSpeckleCount, removedSlopeCount, width: w, height: h };
     }
 
     function renderClustersToCanvas(clusters, width, height, excludeZones = [], minRedArea = 28) {
@@ -759,14 +883,14 @@ function evaluatePixel(samples, scenes) {
         let aiRemovedCount = 0;
 
         for (const c of clusters) {
-            // 赤色（新規浸水候補）がAI指定の誤検知ゾーン（山間部斜面や道路網）に含まれる場合、より厳しい面積基準を適用
             if (c.type === 1 && excludeZones.length > 0) {
                 const normX = (c.cx / width) * 1000;
                 const normY = (c.cy / height) * 1000;
                 const inExclude = excludeZones.some(z =>
                     normY >= z.ymin && normY <= z.ymax && normX >= z.xmin && normX <= z.xmax
                 );
-                if (inExclude && c.area < minRedArea * 5) {
+                // AIが山間部・市街地誤検知と指定したゾーン内は、傾斜が少しでもあれば大きく除去
+                if (inExclude && (c.area < minRedArea * 8 || c.avgSlope >= 2.8)) {
                     aiRemovedCount++;
                     continue;
                 }
@@ -804,7 +928,7 @@ function evaluatePixel(samples, scenes) {
         localStorage.setItem('gemini_api_key_flood', apiKey);
 
         const btnRefine = document.getElementById('btnRefine');
-        btnRefine.innerText = "⏳ AIリファイン中...";
+        btnRefine.innerText = "⏳ 標高＆AI解析中...";
         btnRefine.disabled = true;
 
         try {
@@ -812,21 +936,25 @@ function evaluatePixel(samples, scenes) {
             const w = Math.round(mapSize.x);
             const h = Math.round(mapSize.y);
 
-            // 感度に応じた最小面積閾値（高感度ほどノイズが多いため閾値を引き上げる）
             let userThresh = 0.03;
             const radios = document.getElementsByName('threshRadio');
             for (let i = 0; i < radios.length; i++) {
                 if (radios[i].checked) { userThresh = parseFloat(radios[i].value); break; }
             }
-            const minRedArea = userThresh >= 0.1 ? 42 : (userThresh >= 0.075 ? 30 : 20);
+            const minRedArea = userThresh >= 0.1 ? 45 : (userThresh >= 0.075 ? 32 : 20);
             const minBlueArea = 16;
 
-            // 1. 画面上の浸水レイヤーを取得して第1段階（ピクセル・形状）フィルタリング
-            const rawFloodCanvas = await captureFloodCanvas(w, h);
-            const step1 = filterSpeckleAndRoadNoise(rawFloodCanvas, minRedArea, minBlueArea);
+            // 1. 浸水レイヤーの取得と、国土地理院の標高タイル(DEM)からの傾斜角計算を並列実行
+            const [rawFloodCanvas, screenSlope] = await Promise.all([
+                captureFloodCanvas(w, h),
+                buildSlopeMapFromGSI(w, h)
+            ]);
+
+            // 2. 標高データ(傾斜角)＋ピクセル形状による第1段階フィルタリング
+            const step1 = filterSpeckleSlopeAndRoadNoise(rawFloodCanvas, screenSlope, minRedArea, minBlueArea);
             const preRender = renderClustersToCanvas(step1.survivingClusters, w, h, [], minRedArea);
 
-            // 2. 背景地図と合成した縮小画像を生成してGeminiへ送信
+            // 3. 背景地図と合成した縮小画像を生成してGeminiへ送信
             const baseCanvas = captureBaseMapCanvas(w, h);
             const sendMax = 768;
             const scale = Math.min(1, sendMax / Math.max(w, h));
@@ -839,16 +967,16 @@ function evaluatePixel(samples, scenes) {
 
             const base64Image = compCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
 
-            const prompt = `あなたは衛星SAR（合成開口レーダー）による浸水解析の専門AIです。
-添付画像は、地図上にSAR解析レイヤー（青色＝常時水域、赤色＝新規浸水候補またはレーダー反射ノイズ）を重ねたものです。
-山間部の急斜面（レーダーシャドウ）や道路・市街地の建物反射による「赤色の誤検知ノイズ」が多く含まれている領域（exclude_zones）を0〜1000の正規化座標 [ymin, xmin, ymax, xmax] で指定し、さらに画面内の実際の水域や浸水シグナルの状況を簡潔に解説してください。
+            const prompt = `あなたは衛星SAR（合成開口レーダー）および地形データによる浸水解析の専門AIです。
+添付画像は、国土地理院の標高タイルを用いて山間部の急斜面ノイズを除去した後のSAR解析レイヤー（青色＝常時水域、赤色＝新規浸水候補または残存ノイズ）を地図に重ねたものです。
+山裾や市街地・道路沿いなどで、まだ赤色の誤検知ノイズが残っている領域（exclude_zones）があれば0〜1000の正規化座標 [ymin, xmin, ymax, xmax] で指定し、画面内の実際の水域や浸水シグナルの状況を簡潔に解説してください。
 
 以下のJSON形式のみで出力してください：
 {
   "exclude_zones": [
-    {"ymin": 0, "xmin": 500, "ymax": 1000, "xmax": 1000, "reason": "山間部の斜面ノイズ"}
+    {"ymin": 0, "xmin": 500, "ymax": 1000, "xmax": 1000, "reason": "山裾・市街地の残存ノイズ"}
   ],
-  "summary": "山間部および道路沿いの細かい反射ノイズを除外しました。主要な水域は〇〇川沿いおよび沿岸部に分布しています。"
+  "summary": "標高データにより山間部の斜面ノイズを除去しました。主要な水域は〇〇川沿いに確認でき、平地の〇〇周辺に浸水候補シグナルが分布しています。"
 }`;
 
             const payload = {
@@ -862,7 +990,7 @@ function evaluatePixel(samples, scenes) {
             };
 
             const aiRes = await callGeminiWithFallback(apiKey, payload);
-            let parsed = { exclude_zones: [], summary: "微小ノイズおよび道路・斜面上の散発的な反射を除去しました。" };
+            let parsed = { exclude_zones: [], summary: "地理院標高データとAI解析により、急斜面および道路上のノイズを除去しました。" };
             try {
                 const cleanJson = aiRes.text.replace(/```json/g, '').replace(/```/g, '').trim();
                 parsed = JSON.parse(cleanJson);
@@ -873,7 +1001,7 @@ function evaluatePixel(samples, scenes) {
             const excludeZones = Array.isArray(parsed.exclude_zones) ? parsed.exclude_zones : [];
             const finalRender = renderClustersToCanvas(step1.survivingClusters, w, h, excludeZones, minRedArea);
 
-            // 3. リファイン済みレイヤーを地図に表示し、元のノイズが多いWMSレイヤーを隠す
+            // 4. リファイン済みレイヤーを地図に表示
             const refinedDataUrl = finalRender.canvas.toDataURL('image/png');
             if (refinedOverlay) map.removeLayer(refinedOverlay);
             refinedOverlay = L.imageOverlay(refinedDataUrl, map.getBounds(), { zIndex: 12, interactive: false }).addTo(map);
@@ -883,9 +1011,12 @@ function evaluatePixel(samples, scenes) {
             }
             isShowingRefined = true;
 
-            // 4. 結果パネルと「元に戻す」ボタンの表示
-            const totalRemoved = step1.removedCount + finalRender.aiRemovedCount;
-            document.getElementById('refineStatsBox').innerText = `🧹 除去した微小・道路・斜面ノイズ: ${totalRemoved.toLocaleString()} 箇所`;
+            // 5. 結果パネルと「元に戻す」ボタンの表示
+            const totalRemoved = step1.removedSpeckleCount + step1.removedSlopeCount + finalRender.aiRemovedCount;
+            document.getElementById('refineStatsBox').innerHTML = `
+                🧹 除去したノイズ塊: 計 ${totalRemoved.toLocaleString()} 箇所<br>
+                <span style="font-weight:normal; font-size:11px;">（うち微小・道路等: ${(step1.removedSpeckleCount + finalRender.aiRemovedCount).toLocaleString()} ／ 標高急斜面: ${step1.removedSlopeCount.toLocaleString()}）</span>
+            `;
             document.getElementById('refineCommentBox').innerText = parsed.summary || "ノイズ除去が完了しました。";
             document.getElementById('aiRefinePanel').style.display = 'block';
 
