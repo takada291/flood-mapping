@@ -130,20 +130,20 @@
             color: #0056b3; 
         }
 
-        /* AIリファイン結果パネル */
+        /* リファイン結果パネル */
         #aiRefinePanel {
             position: absolute;
             top: 12px;
             right: 55px;
             z-index: 1000;
-            width: 330px;
+            width: 310px;
             max-width: calc(100vw - 80px);
             background: rgba(255, 255, 255, 0.96);
             border: 2px solid #e67e22;
             border-radius: 8px;
             padding: 10px 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            font-size: 12.5px;
+            font-size: 12px;
             line-height: 1.5;
             color: #222;
             display: none;
@@ -170,8 +170,7 @@
             background: #fff8f0;
             border: 1px solid #fae5d3;
             border-radius: 4px;
-            padding: 5px 8px;
-            margin-bottom: 6px;
+            padding: 6px 8px;
             font-weight: bold;
             color: #a04000;
             font-size: 11.5px;
@@ -225,7 +224,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v2.7</span>
+    <span class="app-title">浸水地図 v2.8</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -299,21 +298,20 @@
     </div>
 
     <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
-    <button id="btnRefine" onclick="refineFloodWithAI()" disabled title="感度「中」「高」での判定後に有効になります">✨ 山地用AIリファイン</button>
+    <button id="btnRefine" onclick="refineFloodWithAI()" disabled title="感度「中」「高」での判定後に有効になります">✨ 山地用リファイン</button>
     <button id="btnResetRefine" onclick="toggleRefineView()">↩️ 元に戻す</button>
 </div>
 
 <div id="map">
     <div class="crosshair"></div>
 
-    <!-- AIリファイン解説パネル -->
+    <!-- リファイン結果パネル（除去結果のみ即時表示） -->
     <div id="aiRefinePanel">
         <div class="refine-header">
-            <span>✨ 山地・谷部AIリファイン結果</span>
+            <span>✨ 山地・谷部リファイン結果</span>
             <span class="refine-close" onclick="document.getElementById('aiRefinePanel').style.display='none'">✕</span>
         </div>
         <div id="refineStatsBox" class="refine-stats"></div>
-        <div id="refineCommentBox"></div>
     </div>
     
     <div id="infoPanel">
@@ -360,7 +358,7 @@
     const optEsri = { attribution: 'Esri World Imagery', crossOrigin: "anonymous", maxZoom: 18 };
     const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', optEsri);
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors', crossOrigin: "anonymous", maxZoom: 19
+        attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
     });
 
     pale.addTo(map);
@@ -388,7 +386,7 @@
                 <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たな変化箇所 (谷部の崩壊・湛水等)<br>
                 <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
                     ※表示されている画面範囲で判定を行います。<br>
-                    ※感度「中」「高」で有効になる「✨ 山地用AIリファイン」を押すと、平地・緩斜面ノイズや小斑点を除去し、山地・谷部の変化シグナルを抽出します。
+                    ※感度「中」「高」で有効になる「✨ 山地用リファイン」を押すと、地理院標高データを用いて平地・緩斜面ノイズや小斑点を除去し、山地・谷部の変化シグナルを抽出します。
                 </div>
             </div>
         `;
@@ -703,34 +701,6 @@ function evaluatePixel(samples, scenes) {
     // ==========================================
     // 山地・谷部抽出フィルタ（緩斜面カット ＋ 小塊カット）
     // ==========================================
-    function captureBaseMapCanvas(width, height) {
-        const mapEl = document.getElementById('map');
-        const mapRect = mapEl.getBoundingClientRect();
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#f0f0f0';
-        ctx.fillRect(0, 0, width, height);
-
-        const tilePane = mapEl.querySelector('.leaflet-tile-pane');
-        if (!tilePane) return canvas;
-
-        const layers = tilePane.querySelectorAll('.leaflet-layer');
-        layers.forEach(layerEl => {
-            if (floodLayer && floodLayer._container === layerEl) return;
-            const tiles = layerEl.querySelectorAll('img.leaflet-tile');
-            tiles.forEach(tile => {
-                if (!tile.complete || tile.naturalWidth === 0) return;
-                const rect = tile.getBoundingClientRect();
-                const x = rect.left - mapRect.left;
-                const y = rect.top - mapRect.top;
-                try { ctx.drawImage(tile, x, y, rect.width, rect.height); } catch (e) {}
-            });
-        });
-        return canvas;
-    }
-
     async function captureFloodCanvas(width, height) {
         const mapEl = document.getElementById('map');
         const mapRect = mapEl.getBoundingClientRect();
@@ -852,6 +822,8 @@ function evaluatePixel(samples, scenes) {
 
         let removedSpeckleCount = 0;
         let removedFlatlandCount = 0;
+        let survivedRedCount = 0;
+        let survivedBlueCount = 0;
         const survivingClusters = [];
 
         for (const c of clusters) {
@@ -864,6 +836,7 @@ function evaluatePixel(samples, scenes) {
                     removedSpeckleCount++;
                     continue;
                 }
+                survivedRedCount++;
             } else if (c.type === 2) {
                 if (c.avgSlope < clusterBlueSlopeMin && c.area < 450) {
                     removedFlatlandCount++;
@@ -873,11 +846,18 @@ function evaluatePixel(samples, scenes) {
                     removedSpeckleCount++;
                     continue;
                 }
+                survivedBlueCount++;
             }
             survivingClusters.push(c);
         }
 
-        return { survivingClusters, removedSpeckleCount, removedFlatlandCount, width: w, height: h };
+        return {
+            survivingClusters,
+            removedSpeckleCount,
+            removedFlatlandCount,
+            survivedRedCount,
+            survivedBlueCount
+        };
     }
 
     function renderClustersToCanvas(clusters, width, height) {
@@ -907,12 +887,8 @@ function evaluatePixel(samples, scenes) {
         return outCanvas;
     }
 
+    // ★v2.8: AI解説通信を省き、標高タイル＋面積フィルタの結果のみを瞬時に表示
     async function refineFloodWithAI() {
-        const apiKey = document.getElementById('geminiApiKey').value.trim();
-        if (!apiKey) {
-            alert("山地用AIリファイン機能を使用するには、Gemini APIキーを入力してください。");
-            return;
-        }
         if (!floodLayer || !hasLoadedFloodTiles) {
             alert("先に「🌊 浸水判定」を実行してください。");
             return;
@@ -921,10 +897,8 @@ function evaluatePixel(samples, scenes) {
             return;
         }
 
-        localStorage.setItem('gemini_api_key_flood', apiKey);
-
         const btnRefine = document.getElementById('btnRefine');
-        btnRefine.innerText = "⏳ 山地・谷部抽出中...";
+        btnRefine.innerText = "⏳ 抽出中...";
         btnRefine.disabled = true;
 
         try {
@@ -935,26 +909,23 @@ function evaluatePixel(samples, scenes) {
             const userThresh = getSelectedThreshold();
             const isHighSens = userThresh >= 0.1;
 
-            // ★v2.7: 高感度時でも平地・緩斜面と小塊ノイズをローカル計算だけで確実に除去する閾値
             const minRedArea = isHighSens ? 95 : 55;
             const minBlueArea = isHighSens ? 75 : 45;
             const pixelRedSlopeMin = isHighSens ? 10.5 : 8.5;
             const clusterRedSlopeMin = isHighSens ? 13.0 : 11.0;
             const clusterBlueSlopeMin = isHighSens ? 12.0 : 10.0;
 
-            // 1. 浸水レイヤー取得と国土地理院標高タイル(DEM)計算を並列実行
             const [rawFloodCanvas, screenSlope] = await Promise.all([
                 captureFloodCanvas(w, h),
                 buildSlopeMapFromGSI(w, h)
             ]);
 
-            // 2. 標高・面積フィルタを適用し、AI通信を待たずに即座にリファイン画像を地図へ表示
-            const step1 = filterFlatlandAndSpeckleNoise(
+            const res = filterFlatlandAndSpeckleNoise(
                 rawFloodCanvas, screenSlope,
                 minRedArea, minBlueArea,
                 pixelRedSlopeMin, clusterRedSlopeMin, clusterBlueSlopeMin
             );
-            const refinedCanvas = renderClustersToCanvas(step1.survivingClusters, w, h);
+            const refinedCanvas = renderClustersToCanvas(res.survivingClusters, w, h);
 
             const refinedDataUrl = refinedCanvas.toDataURL('image/png');
             if (refinedOverlay) map.removeLayer(refinedOverlay);
@@ -965,57 +936,26 @@ function evaluatePixel(samples, scenes) {
             }
             isShowingRefined = true;
 
-            const totalRemoved = step1.removedFlatlandCount + step1.removedSpeckleCount;
+            const totalRemoved = res.removedFlatlandCount + res.removedSpeckleCount;
             document.getElementById('refineStatsBox').innerHTML = `
                 🧹 除去したノイズ塊: 計 ${totalRemoved.toLocaleString()} 箇所<br>
-                <span style="font-weight:normal; font-size:11px;">（うち平地・緩斜面等: ${step1.removedFlatlandCount.toLocaleString()} ／ 小塊ノイズ: ${step1.removedSpeckleCount.toLocaleString()}）</span>
+                <span style="font-weight:normal; font-size:11px; color:#555;">（平地・緩斜面等: ${res.removedFlatlandCount.toLocaleString()} ／ 小塊ノイズ: ${res.removedSpeckleCount.toLocaleString()}）</span>
+                <hr style="border:none; border-top:1px dashed #e0c0a0; margin:6px 0;">
+                ⛰️ 抽出された山地・谷部シグナル:<br>
+                <span style="color:#d32f2f;">■ 赤（崩壊・湛水候補）: ${res.survivedRedCount.toLocaleString()} 箇所</span><br>
+                <span style="color:#0056b3;">■ 青（渓流・既存水域）: ${res.survivedBlueCount.toLocaleString()} 箇所</span>
             `;
-            document.getElementById('refineCommentBox').innerText = "🤖 AIが山地・谷部の状況を解析しています...";
             document.getElementById('aiRefinePanel').style.display = 'block';
 
             const btnReset = document.getElementById('btnResetRefine');
             btnReset.style.display = 'inline-block';
             btnReset.innerText = "↩️ 元に戻す";
 
-            // 3. 軽量化した合成画像をGeminiへ送信し、テキスト解説のみを取得（JSON座標出力によるパンクを防止）
-            const baseCanvas = captureBaseMapCanvas(w, h);
-            const sendMax = 640;
-            const scale = Math.min(1, sendMax / Math.max(w, h));
-            const compCanvas = document.createElement('canvas');
-            compCanvas.width = Math.round(w * scale);
-            compCanvas.height = Math.round(h * scale);
-            const compCtx = compCanvas.getContext('2d');
-            compCtx.drawImage(baseCanvas, 0, 0, compCanvas.width, compCanvas.height);
-            compCtx.drawImage(refinedCanvas, 0, 0, compCanvas.width, compCanvas.height);
-
-            const base64Image = compCanvas.toDataURL('image/jpeg', 0.75).split(',')[1];
-
-            const prompt = `あなたは森林・山地防災および衛星SAR（合成開口レーダー）解析の専門AIです。
-添付画像は、国土地理院の標高データを用いて「平地・緩斜面ノイズ」や「微小な斑点」を除外し、「山地および急峻な谷部（渓流沿い）のまとまった変化シグナル（赤色＝谷部の崩壊・土砂移動・湛水候補、青色＝渓流・既存水域）」を抽出したマップです。
-画面内の山地・谷筋において、どの方面（地名や方角）の谷部や渓流沿いにまとまった赤色・青色のシグナルが分布しているか、林業・山地防災の視点で2〜3文（120文字程度）で簡潔に解説してください。※JSONではなく通常の日本語テキストのみで出力してください。`;
-
-            const payload = {
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-                    ]
-                }]
-            };
-
-            try {
-                const aiRes = await callGeminiWithFallback(apiKey, payload);
-                document.getElementById('refineCommentBox').innerText = aiRes.text.trim();
-            } catch (aiErr) {
-                console.warn("AI解説取得エラー:", aiErr);
-                document.getElementById('refineCommentBox').innerText = "平地・緩斜面および小塊ノイズの除去が完了しました。（※AI解説通信のみスキップされました）";
-            }
-
         } catch (error) {
             console.error(error);
             alert("リファイン処理中にエラーが発生しました。\n詳細: " + error.message);
         } finally {
-            btnRefine.innerText = "✨ 山地用AIリファイン";
+            btnRefine.innerText = "✨ 山地用リファイン";
             updateRefineButtonState();
         }
     }
@@ -1099,7 +1039,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.7: Gemini API 呼び出し共通基盤 (2.5-flash廃止対応・429/503自動リトライ付き)
+    // Gemini API 呼び出し共通基盤 (地名検索用: Hydrogen優先・思考LOW固定)
     // ==========================================
     const MODEL_CANDIDATES = ["gemini-4-hydrogen", "gemini-3.8-flash"];
 
