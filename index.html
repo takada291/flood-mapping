@@ -225,7 +225,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v2.5</span>
+    <span class="app-title">浸水地図 v2.6</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -388,7 +388,7 @@
                 <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たな変化箇所 (谷部の崩壊・湛水等)<br>
                 <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
                     ※表示されている画面範囲で判定を行います。<br>
-                    ※感度「中」「高」で有効になる「✨ 山地用AIリファイン」を押すと、平地ノイズや微小点を除去し、山地・谷部の変化シグナルを抽出します。
+                    ※感度「中」「高」で有効になる「✨ 山地用AIリファイン」を押すと、平地・緩斜面ノイズや微小点を除去し、山地・谷部の変化シグナルを抽出します。
                 </div>
             </div>
         `;
@@ -447,7 +447,7 @@
         return 0.03;
     }
 
-    // ★v2.5: 感度「低」(0.03)のときはAIリファインをグレーアウトし、「中」「高」かつ判定済みのときのみ有効化
+    // 感度「低」(0.03)のときはAIリファインをグレーアウトし、「中」「高」かつ判定済みのときのみ有効化
     function updateRefineButtonState() {
         const btnRefine = document.getElementById('btnRefine');
         const thresh = getSelectedThreshold();
@@ -459,7 +459,7 @@
             btnRefine.title = "先に感度「中」または「高」で「🌊 浸水判定」を実行してください";
         } else {
             btnRefine.disabled = false;
-            btnRefine.title = "平地ノイズや微小点を除去し、山地・谷部の崩壊・湛水シグナルを抽出します";
+            btnRefine.title = "平地・緩斜面ノイズや小斑点を除去し、山地・谷部の崩壊・湛水シグナルを抽出します";
         }
     }
 
@@ -592,7 +592,8 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.5: 国土地理院 標高タイル(DEM)から「山地・谷部」の傾斜・起伏指標を生成
+    // ★v2.6: 国土地理院 標高タイル(DEM)から「山地・谷部」の傾斜指標を生成
+    // （山裾の緩斜面へ傾斜が染み出さないよう5x5近傍に最適化）
     // ==========================================
     async function buildSlopeMapFromGSI(width, height) {
         const demZoom = Math.min(14, Math.max(11, map.getZoom()));
@@ -646,39 +647,37 @@ function evaluatePixel(samples, scenes) {
             eleGrid[i] = (v < 8388608) ? v * 0.01 : (v - 16777216) * 0.01;
         }
 
-        // DEMピクセルあたりの地上距離(m)
         const centerLat = map.getCenter().lat;
         const resMeters = (40075016.686 * Math.cos(centerLat * Math.PI / 180)) / (256 * Math.pow(2, demZoom));
 
-        // 3x3の局所傾斜角と、7x7（谷底〜両岸斜面を含む周囲地形）の起伏傾斜角の大きい方を採用
-        // これにより「山地の斜面」だけでなく「両側を斜面に挟まれた谷底・渓流沿い」も確実に山地・谷部として抽出できる
+        // 3x3の局所傾斜角と、5x5（谷筋の両岸斜面を拾いつつ山裾緩斜面への染み出しを抑える範囲）の傾斜角を合成
         const demSlope = new Float32Array(demW * demH);
-        for (let y = 3; y < demH - 3; y++) {
-            for (let x = 3; x < demW - 3; x++) {
+        for (let y = 2; y < demH - 2; y++) {
+            for (let x = 2; x < demW - 2; x++) {
                 const cIdx = y * demW + x;
                 const cEle = eleGrid[cIdx];
                 if (isNaN(cEle)) continue;
 
                 let min3 = cEle, max3 = cEle;
-                let min7 = cEle, max7 = cEle;
+                let min5 = cEle, max5 = cEle;
 
-                for (let dy = -3; dy <= 3; dy++) {
+                for (let dy = -2; dy <= 2; dy++) {
                     const rowOffset = (y + dy) * demW + x;
-                    for (let dx = -3; dx <= 3; dx++) {
+                    for (let dx = -2; dx <= 2; dx++) {
                         const e = eleGrid[rowOffset + dx];
                         if (!isNaN(e)) {
                             if (Math.abs(dy) <= 1 && Math.abs(dx) <= 1) {
                                 if (e < min3) min3 = e;
                                 if (e > max3) max3 = e;
                             }
-                            if (e < min7) min7 = e;
-                            if (e > max7) max7 = e;
+                            if (e < min5) min5 = e;
+                            if (e > max5) max5 = e;
                         }
                     }
                 }
                 const slope3 = Math.atan((max3 - min3) / (2.0 * resMeters)) * (180 / Math.PI);
-                const slope7 = Math.atan((max7 - min7) / (6.0 * resMeters)) * (180 / Math.PI);
-                demSlope[cIdx] = Math.max(slope3, slope7);
+                const slope5 = Math.atan((max5 - min5) / (4.0 * resMeters)) * (180 / Math.PI);
+                demSlope[cIdx] = Math.max(slope3, slope5 * 0.95);
             }
         }
 
@@ -705,7 +704,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.5: 山地・谷部抽出フィルタ（平地ノイズ除去 ＋ 微小点除去）
+    // ★v2.6: 山地・谷部抽出フィルタ（緩斜面カット強化 ＋ 小塊カット強化）
     // ==========================================
     function captureBaseMapCanvas(width, height) {
         const mapEl = document.getElementById('map');
@@ -770,8 +769,8 @@ function evaluatePixel(samples, scenes) {
         return canvas;
     }
 
-    // ステップ1: 平地の赤・青ノイズをカットし、山地・谷部（傾斜地）のシグナルを残す
-    function filterFlatlandAndSpeckleNoise(floodCanvas, screenSlope, minRedArea, minBlueArea) {
+    // ステップ1: 平地および山裾の緩斜面をカットし、かつ小さな塊ノイズを除去して山地・谷部を残す
+    function filterFlatlandAndSpeckleNoise(floodCanvas, screenSlope, minRedArea, minBlueArea, pixelRedSlopeMin, clusterRedSlopeMin, clusterBlueSlopeMin) {
         const w = floodCanvas.width;
         const h = floodCanvas.height;
         const ctx = floodCanvas.getContext('2d', { willReadFrequently: true });
@@ -785,17 +784,17 @@ function evaluatePixel(samples, scenes) {
             const idx = i * 4;
             const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
             if (a > 40) {
-                const slope = screenSlope ? screenSlope[i] : 10;
+                const slope = screenSlope ? screenSlope[i] : 15;
                 if (r > 150 && g < 100 && b < 100) {
-                    // ★逆転発想: 平地(傾斜3.8度未満)の赤色ピクセル(水田・市街地・道路ノイズ)を事前除外し、山地・谷部のみ残す
-                    if (slope >= 3.8) typeGrid[i] = 1;
+                    // 平地〜山裾の緩斜面(pixelRedSlopeMin未満)の赤ピクセルを事前除外
+                    if (slope >= pixelRedSlopeMin) typeGrid[i] = 1;
                 } else if (b > 150 && r < 100 && g < 100) {
                     typeGrid[i] = 2;
                 }
             }
         }
 
-        // 3x3近傍フィルタ（孤立した1〜2ピクセルのスペックルノイズを除去、谷筋の小崩壊は残すため閾値を3に緩和）
+        // 3x3近傍密度フィルタ（閾値を3→5へ強化し、細かい粒や細い枝状ノイズをしっかり削る）
         const cleanedGrid = new Uint8Array(totalPx);
         for (let y = 1; y < h - 1; y++) {
             for (let x = 1; x < w - 1; x++) {
@@ -809,7 +808,7 @@ function evaluatePixel(samples, scenes) {
                         if (typeGrid[rowOffset + dx] === t) sameCount++;
                     }
                 }
-                if (sameCount >= 3) cleanedGrid[i] = t;
+                if (sameCount >= 5) cleanedGrid[i] = t;
             }
         }
 
@@ -874,18 +873,19 @@ function evaluatePixel(samples, scenes) {
 
         for (const c of clusters) {
             if (c.type === 1) {
-                // 赤(新規変化): 平地・緩斜面(平均傾斜5.0度未満)のノイズを除去し、山地・谷部(5.0度以上)を残す
-                if (c.avgSlope < 5.0) {
+                // 赤(新規変化): 平地〜緩斜面(clusterRedSlopeMin未満)を除去し、本格的な山地・谷部のみ残す
+                if (c.avgSlope < clusterRedSlopeMin) {
                     removedFlatlandCount++;
                     continue;
                 }
+                // 小さな塊を除去
                 if (c.area < minRedArea) {
                     removedSpeckleCount++;
                     continue;
                 }
             } else if (c.type === 2) {
-                // 青(常時水域): 平地の細かい青ノイズは除去し、大河川(面積120px以上)または山地・谷部の渓流シグナル(傾斜4.5度以上)を残す
-                if (c.avgSlope < 4.5 && c.area < 120) {
+                // 青(常時水域): 平地〜緩斜面の小・中規模ノイズは除去し、大河川(面積400px以上)または急峻な渓流(clusterBlueSlopeMin以上)のみ残す
+                if (c.avgSlope < clusterBlueSlopeMin && c.area < 400) {
                     removedFlatlandCount++;
                     continue;
                 }
@@ -900,7 +900,7 @@ function evaluatePixel(samples, scenes) {
         return { survivingClusters, removedSpeckleCount, removedFlatlandCount, width: w, height: h };
     }
 
-    function renderClustersToCanvas(clusters, width, height, excludeFlatZones = []) {
+    function renderClustersToCanvas(clusters, width, height, excludeFlatZones = [], aiSlopeCutoff = 13.5) {
         const outCanvas = document.createElement('canvas');
         outCanvas.width = width;
         outCanvas.height = height;
@@ -917,8 +917,8 @@ function evaluatePixel(samples, scenes) {
                 const inFlatZone = excludeFlatZones.some(z =>
                     normY >= z.ymin && normY <= z.ymax && normX >= z.xmin && normX <= z.xmax
                 );
-                // AIが「平地の市街地・農地ゾーン」と指定した範囲内にある中程度の傾斜(8度未満)の赤ノイズを追加除去
-                if (inFlatZone && c.avgSlope < 8.0) {
+                // AIが「平地・山裾の緩斜面ゾーン」と指定した範囲内にある中程度以下の傾斜の赤ノイズを追加除去
+                if (inFlatZone && c.avgSlope < aiSlopeCutoff) {
                     aiRemovedCount++;
                     continue;
                 }
@@ -968,9 +968,15 @@ function evaluatePixel(samples, scenes) {
             const h = Math.round(mapSize.y);
 
             const userThresh = getSelectedThreshold();
-            // 谷部での小規模な崩壊も捉えられるよう、山地内の最小面積閾値は適度に小さく設定
-            const minRedArea = userThresh >= 0.1 ? 18 : 12;
-            const minBlueArea = 14;
+            const isHighSens = userThresh >= 0.1;
+
+            // ★v2.6: 小さな塊と緩斜面をしっかり除くため閾値を強化
+            const minRedArea = isHighSens ? 85 : 50;
+            const minBlueArea = isHighSens ? 70 : 45;
+            const pixelRedSlopeMin = isHighSens ? 9.5 : 8.0;
+            const clusterRedSlopeMin = isHighSens ? 12.0 : 10.5;
+            const clusterBlueSlopeMin = isHighSens ? 11.5 : 10.0;
+            const aiSlopeCutoff = isHighSens ? 15.0 : 13.5;
 
             // 1. 浸水レイヤーの取得と、国土地理院の標高タイル(DEM)からの傾斜・谷部起伏計算を並列実行
             const [rawFloodCanvas, screenSlope] = await Promise.all([
@@ -978,9 +984,13 @@ function evaluatePixel(samples, scenes) {
                 buildSlopeMapFromGSI(w, h)
             ]);
 
-            // 2. 平地ノイズ除去 ＆ 山地・谷部シグナルの抽出
-            const step1 = filterFlatlandAndSpeckleNoise(rawFloodCanvas, screenSlope, minRedArea, minBlueArea);
-            const preRender = renderClustersToCanvas(step1.survivingClusters, w, h, []);
+            // 2. 平地・緩斜面ノイズ除去 ＆ 小塊除去による山地・谷部シグナルの抽出
+            const step1 = filterFlatlandAndSpeckleNoise(
+                rawFloodCanvas, screenSlope,
+                minRedArea, minBlueArea,
+                pixelRedSlopeMin, clusterRedSlopeMin, clusterBlueSlopeMin
+            );
+            const preRender = renderClustersToCanvas(step1.survivingClusters, w, h, [], aiSlopeCutoff);
 
             // 3. 背景地図と合成した縮小画像を生成してGeminiへ送信
             const baseCanvas = captureBaseMapCanvas(w, h);
@@ -996,16 +1006,16 @@ function evaluatePixel(samples, scenes) {
             const base64Image = compCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
 
             const prompt = `あなたは森林・山地防災および衛星SAR（合成開口レーダー）解析の専門AIです。
-添付画像は、国土地理院の標高データを用いて「平地の農地・市街地ノイズ」を除去し、「山地および谷部（渓流沿い）の変化シグナル（赤色＝谷部の大小の崩壊・土砂移動・湛水候補、青色＝渓流・既存水域）」を抽出したマップです。
-1. もし平地（市街地や水田地帯）にまだ赤色の誤検知ノイズが残っている領域があれば exclude_zones として0〜1000の正規化座標 [ymin, xmin, ymax, xmax] で指定してください（山地・谷部は絶対にexclude_zonesに含めないでください）。
-2. 画面内の山地・谷筋において、どの方面の谷部や渓流沿いに崩壊・土砂移動・湛水候補のシグナル（赤・青）が見られるか、林業・山地防災の視点で簡潔に解説してください。
+添付画像は、国土地理院の標高データを用いて「平地・山裾の緩斜面ノイズ」や「微小な斑点」を除去し、「山地および急峻な谷部（渓流沿い）のまとまった変化シグナル（赤色＝谷部の崩壊・土砂移動・湛水候補、青色＝渓流・既存水域）」を抽出したマップです。
+1. もし平地や山裾の緩斜面（扇状地・農地・集落周辺）にまだ赤色の誤検知ノイズが残っている領域があれば exclude_zones として0〜1000の正規化座標 [ymin, xmin, ymax, xmax] で指定してください（山地の深い谷部はexclude_zonesに含めないでください）。
+2. 画面内の山地・谷筋において、どの方面の谷部や渓流沿いにまとまった崩壊・土砂移動・湛水候補のシグナル（赤・青）が見られるか、林業・山地防災の視点で簡潔に解説してください。
 
 以下のJSON形式のみで出力してください：
 {
   "exclude_zones": [
-    {"ymin": 600, "xmin": 200, "ymax": 1000, "xmax": 800, "reason": "平地市街地・農地の残存ノイズ"}
+    {"ymin": 600, "xmin": 200, "ymax": 1000, "xmax": 800, "reason": "平地・山裾緩斜面の残存ノイズ"}
   ],
-  "summary": "平地のノイズを除外し、山地・谷部のシグナルを抽出しました。画面北西部の〇〇周辺の谷筋に大小の崩壊・変化シグナルが集中しています。"
+  "summary": "平地・緩斜面および小規模な斑点ノイズを除外しました。画面北西部の〇〇周辺の深い谷筋にまとまった崩壊・変化シグナルが確認できます。"
 }`;
 
             const payload = {
@@ -1019,7 +1029,7 @@ function evaluatePixel(samples, scenes) {
             };
 
             const aiRes = await callGeminiWithFallback(apiKey, payload);
-            let parsed = { exclude_zones: [], summary: "平地のノイズを除去し、山地・谷部の変化シグナルを抽出しました。" };
+            let parsed = { exclude_zones: [], summary: "平地・緩斜面および小塊ノイズを除去し、山地・谷部の主要な変化シグナルを抽出しました。" };
             try {
                 const cleanJson = aiRes.text.replace(/```json/g, '').replace(/```/g, '').trim();
                 parsed = JSON.parse(cleanJson);
@@ -1028,7 +1038,7 @@ function evaluatePixel(samples, scenes) {
             }
 
             const excludeZones = Array.isArray(parsed.exclude_zones) ? parsed.exclude_zones : [];
-            const finalRender = renderClustersToCanvas(step1.survivingClusters, w, h, excludeZones);
+            const finalRender = renderClustersToCanvas(step1.survivingClusters, w, h, excludeZones, aiSlopeCutoff);
 
             // 4. リファイン済みレイヤーを地図に表示
             const refinedDataUrl = finalRender.canvas.toDataURL('image/png');
@@ -1045,7 +1055,7 @@ function evaluatePixel(samples, scenes) {
             const totalRemoved = flatRemoved + step1.removedSpeckleCount;
             document.getElementById('refineStatsBox').innerHTML = `
                 🧹 除去したノイズ塊: 計 ${totalRemoved.toLocaleString()} 箇所<br>
-                <span style="font-weight:normal; font-size:11px;">（うち平地・農地・道路等: ${flatRemoved.toLocaleString()} ／ 微小ノイズ: ${step1.removedSpeckleCount.toLocaleString()}）</span>
+                <span style="font-weight:normal; font-size:11px;">（うち平地・緩斜面等: ${flatRemoved.toLocaleString()} ／ 小塊ノイズ: ${step1.removedSpeckleCount.toLocaleString()}）</span>
             `;
             document.getElementById('refineCommentBox').innerText = parsed.summary || "山地・谷部の抽出が完了しました。";
             document.getElementById('aiRefinePanel').style.display = 'block';
