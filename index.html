@@ -225,7 +225,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v2.6</span>
+    <span class="app-title">浸水地図 v2.7</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -388,7 +388,7 @@
                 <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たな変化箇所 (谷部の崩壊・湛水等)<br>
                 <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
                     ※表示されている画面範囲で判定を行います。<br>
-                    ※感度「中」「高」で有効になる「✨ 山地用AIリファイン」を押すと、平地・緩斜面ノイズや微小点を除去し、山地・谷部の変化シグナルを抽出します。
+                    ※感度「中」「高」で有効になる「✨ 山地用AIリファイン」を押すと、平地・緩斜面ノイズや小斑点を除去し、山地・谷部の変化シグナルを抽出します。
                 </div>
             </div>
         `;
@@ -447,7 +447,6 @@
         return 0.03;
     }
 
-    // 感度「低」(0.03)のときはAIリファインをグレーアウトし、「中」「高」かつ判定済みのときのみ有効化
     function updateRefineButtonState() {
         const btnRefine = document.getElementById('btnRefine');
         const thresh = getSelectedThreshold();
@@ -592,8 +591,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.6: 国土地理院 標高タイル(DEM)から「山地・谷部」の傾斜指標を生成
-    // （山裾の緩斜面へ傾斜が染み出さないよう5x5近傍に最適化）
+    // 国土地理院 標高タイル(DEM)から「山地・谷部」の傾斜指標を生成
     // ==========================================
     async function buildSlopeMapFromGSI(width, height) {
         const demZoom = Math.min(14, Math.max(11, map.getZoom()));
@@ -650,7 +648,6 @@ function evaluatePixel(samples, scenes) {
         const centerLat = map.getCenter().lat;
         const resMeters = (40075016.686 * Math.cos(centerLat * Math.PI / 180)) / (256 * Math.pow(2, demZoom));
 
-        // 3x3の局所傾斜角と、5x5（谷筋の両岸斜面を拾いつつ山裾緩斜面への染み出しを抑える範囲）の傾斜角を合成
         const demSlope = new Float32Array(demW * demH);
         for (let y = 2; y < demH - 2; y++) {
             for (let x = 2; x < demW - 2; x++) {
@@ -704,7 +701,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v2.6: 山地・谷部抽出フィルタ（緩斜面カット強化 ＋ 小塊カット強化）
+    // 山地・谷部抽出フィルタ（緩斜面カット ＋ 小塊カット）
     // ==========================================
     function captureBaseMapCanvas(width, height) {
         const mapEl = document.getElementById('map');
@@ -769,7 +766,6 @@ function evaluatePixel(samples, scenes) {
         return canvas;
     }
 
-    // ステップ1: 平地および山裾の緩斜面をカットし、かつ小さな塊ノイズを除去して山地・谷部を残す
     function filterFlatlandAndSpeckleNoise(floodCanvas, screenSlope, minRedArea, minBlueArea, pixelRedSlopeMin, clusterRedSlopeMin, clusterBlueSlopeMin) {
         const w = floodCanvas.width;
         const h = floodCanvas.height;
@@ -778,7 +774,6 @@ function evaluatePixel(samples, scenes) {
         const data = imgData.data;
         const totalPx = w * h;
 
-        // 0: 透明, 1: 赤(谷部崩壊・新規変化), 2: 青(常時水域・渓流)
         const typeGrid = new Uint8Array(totalPx);
         for (let i = 0; i < totalPx; i++) {
             const idx = i * 4;
@@ -786,7 +781,6 @@ function evaluatePixel(samples, scenes) {
             if (a > 40) {
                 const slope = screenSlope ? screenSlope[i] : 15;
                 if (r > 150 && g < 100 && b < 100) {
-                    // 平地〜山裾の緩斜面(pixelRedSlopeMin未満)の赤ピクセルを事前除外
                     if (slope >= pixelRedSlopeMin) typeGrid[i] = 1;
                 } else if (b > 150 && r < 100 && g < 100) {
                     typeGrid[i] = 2;
@@ -794,7 +788,6 @@ function evaluatePixel(samples, scenes) {
             }
         }
 
-        // 3x3近傍密度フィルタ（閾値を3→5へ強化し、細かい粒や細い枝状ノイズをしっかり削る）
         const cleanedGrid = new Uint8Array(totalPx);
         for (let y = 1; y < h - 1; y++) {
             for (let x = 1; x < w - 1; x++) {
@@ -812,7 +805,6 @@ function evaluatePixel(samples, scenes) {
             }
         }
 
-        // 連結成分ラベリング (BFS)
         const visited = new Uint8Array(totalPx);
         const clusters = [];
         const queue = new Int32Array(totalPx);
@@ -826,7 +818,6 @@ function evaluatePixel(samples, scenes) {
             visited[i] = 1;
 
             const pixels = [];
-            let minX = w, maxX = 0, minY = h, maxY = 0;
             let slopeSum = 0;
 
             while (head < tail) {
@@ -835,12 +826,6 @@ function evaluatePixel(samples, scenes) {
                 if (screenSlope) slopeSum += screenSlope[curr];
 
                 const cx = curr % w;
-                const cy = (curr / w) | 0;
-                if (cx < minX) minX = cx;
-                if (cx > maxX) maxX = cx;
-                if (cy < minY) minY = cy;
-                if (cy > maxY) maxY = cy;
-
                 const neighbors = [curr - 1, curr + 1, curr - w, curr + w];
                 for (let n = 0; n < 4; n++) {
                     const ni = neighbors[n];
@@ -861,8 +846,6 @@ function evaluatePixel(samples, scenes) {
                 type: t,
                 pixels,
                 area,
-                cx: (minX + maxX) / 2,
-                cy: (minY + maxY) / 2,
                 avgSlope
             });
         }
@@ -873,19 +856,16 @@ function evaluatePixel(samples, scenes) {
 
         for (const c of clusters) {
             if (c.type === 1) {
-                // 赤(新規変化): 平地〜緩斜面(clusterRedSlopeMin未満)を除去し、本格的な山地・谷部のみ残す
                 if (c.avgSlope < clusterRedSlopeMin) {
                     removedFlatlandCount++;
                     continue;
                 }
-                // 小さな塊を除去
                 if (c.area < minRedArea) {
                     removedSpeckleCount++;
                     continue;
                 }
             } else if (c.type === 2) {
-                // 青(常時水域): 平地〜緩斜面の小・中規模ノイズは除去し、大河川(面積400px以上)または急峻な渓流(clusterBlueSlopeMin以上)のみ残す
-                if (c.avgSlope < clusterBlueSlopeMin && c.area < 400) {
+                if (c.avgSlope < clusterBlueSlopeMin && c.area < 450) {
                     removedFlatlandCount++;
                     continue;
                 }
@@ -900,7 +880,7 @@ function evaluatePixel(samples, scenes) {
         return { survivingClusters, removedSpeckleCount, removedFlatlandCount, width: w, height: h };
     }
 
-    function renderClustersToCanvas(clusters, width, height, excludeFlatZones = [], aiSlopeCutoff = 13.5) {
+    function renderClustersToCanvas(clusters, width, height) {
         const outCanvas = document.createElement('canvas');
         outCanvas.width = width;
         outCanvas.height = height;
@@ -908,22 +888,7 @@ function evaluatePixel(samples, scenes) {
         const imgData = ctx.createImageData(width, height);
         const out = imgData.data;
 
-        let aiRemovedCount = 0;
-
         for (const c of clusters) {
-            if (c.type === 1 && excludeFlatZones.length > 0) {
-                const normX = (c.cx / width) * 1000;
-                const normY = (c.cy / height) * 1000;
-                const inFlatZone = excludeFlatZones.some(z =>
-                    normY >= z.ymin && normY <= z.ymax && normX >= z.xmin && normX <= z.xmax
-                );
-                // AIが「平地・山裾の緩斜面ゾーン」と指定した範囲内にある中程度以下の傾斜の赤ノイズを追加除去
-                if (inFlatZone && c.avgSlope < aiSlopeCutoff) {
-                    aiRemovedCount++;
-                    continue;
-                }
-            }
-
             const r = (c.type === 1) ? 255 : 0;
             const g = 0;
             const b = (c.type === 2) ? 255 : 0;
@@ -939,7 +904,7 @@ function evaluatePixel(samples, scenes) {
         }
 
         ctx.putImageData(imgData, 0, 0);
-        return { canvas: outCanvas, aiRemovedCount };
+        return outCanvas;
     }
 
     async function refineFloodWithAI() {
@@ -970,78 +935,28 @@ function evaluatePixel(samples, scenes) {
             const userThresh = getSelectedThreshold();
             const isHighSens = userThresh >= 0.1;
 
-            // ★v2.6: 小さな塊と緩斜面をしっかり除くため閾値を強化
-            const minRedArea = isHighSens ? 85 : 50;
-            const minBlueArea = isHighSens ? 70 : 45;
-            const pixelRedSlopeMin = isHighSens ? 9.5 : 8.0;
-            const clusterRedSlopeMin = isHighSens ? 12.0 : 10.5;
-            const clusterBlueSlopeMin = isHighSens ? 11.5 : 10.0;
-            const aiSlopeCutoff = isHighSens ? 15.0 : 13.5;
+            // ★v2.7: 高感度時でも平地・緩斜面と小塊ノイズをローカル計算だけで確実に除去する閾値
+            const minRedArea = isHighSens ? 95 : 55;
+            const minBlueArea = isHighSens ? 75 : 45;
+            const pixelRedSlopeMin = isHighSens ? 10.5 : 8.5;
+            const clusterRedSlopeMin = isHighSens ? 13.0 : 11.0;
+            const clusterBlueSlopeMin = isHighSens ? 12.0 : 10.0;
 
-            // 1. 浸水レイヤーの取得と、国土地理院の標高タイル(DEM)からの傾斜・谷部起伏計算を並列実行
+            // 1. 浸水レイヤー取得と国土地理院標高タイル(DEM)計算を並列実行
             const [rawFloodCanvas, screenSlope] = await Promise.all([
                 captureFloodCanvas(w, h),
                 buildSlopeMapFromGSI(w, h)
             ]);
 
-            // 2. 平地・緩斜面ノイズ除去 ＆ 小塊除去による山地・谷部シグナルの抽出
+            // 2. 標高・面積フィルタを適用し、AI通信を待たずに即座にリファイン画像を地図へ表示
             const step1 = filterFlatlandAndSpeckleNoise(
                 rawFloodCanvas, screenSlope,
                 minRedArea, minBlueArea,
                 pixelRedSlopeMin, clusterRedSlopeMin, clusterBlueSlopeMin
             );
-            const preRender = renderClustersToCanvas(step1.survivingClusters, w, h, [], aiSlopeCutoff);
+            const refinedCanvas = renderClustersToCanvas(step1.survivingClusters, w, h);
 
-            // 3. 背景地図と合成した縮小画像を生成してGeminiへ送信
-            const baseCanvas = captureBaseMapCanvas(w, h);
-            const sendMax = 768;
-            const scale = Math.min(1, sendMax / Math.max(w, h));
-            const compCanvas = document.createElement('canvas');
-            compCanvas.width = Math.round(w * scale);
-            compCanvas.height = Math.round(h * scale);
-            const compCtx = compCanvas.getContext('2d');
-            compCtx.drawImage(baseCanvas, 0, 0, compCanvas.width, compCanvas.height);
-            compCtx.drawImage(preRender.canvas, 0, 0, compCanvas.width, compCanvas.height);
-
-            const base64Image = compCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
-
-            const prompt = `あなたは森林・山地防災および衛星SAR（合成開口レーダー）解析の専門AIです。
-添付画像は、国土地理院の標高データを用いて「平地・山裾の緩斜面ノイズ」や「微小な斑点」を除去し、「山地および急峻な谷部（渓流沿い）のまとまった変化シグナル（赤色＝谷部の崩壊・土砂移動・湛水候補、青色＝渓流・既存水域）」を抽出したマップです。
-1. もし平地や山裾の緩斜面（扇状地・農地・集落周辺）にまだ赤色の誤検知ノイズが残っている領域があれば exclude_zones として0〜1000の正規化座標 [ymin, xmin, ymax, xmax] で指定してください（山地の深い谷部はexclude_zonesに含めないでください）。
-2. 画面内の山地・谷筋において、どの方面の谷部や渓流沿いにまとまった崩壊・土砂移動・湛水候補のシグナル（赤・青）が見られるか、林業・山地防災の視点で簡潔に解説してください。
-
-以下のJSON形式のみで出力してください：
-{
-  "exclude_zones": [
-    {"ymin": 600, "xmin": 200, "ymax": 1000, "xmax": 800, "reason": "平地・山裾緩斜面の残存ノイズ"}
-  ],
-  "summary": "平地・緩斜面および小規模な斑点ノイズを除外しました。画面北西部の〇〇周辺の深い谷筋にまとまった崩壊・変化シグナルが確認できます。"
-}`;
-
-            const payload = {
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-                    ]
-                }],
-                generationConfig: { response_mime_type: "application/json" }
-            };
-
-            const aiRes = await callGeminiWithFallback(apiKey, payload);
-            let parsed = { exclude_zones: [], summary: "平地・緩斜面および小塊ノイズを除去し、山地・谷部の主要な変化シグナルを抽出しました。" };
-            try {
-                const cleanJson = aiRes.text.replace(/```json/g, '').replace(/```/g, '').trim();
-                parsed = JSON.parse(cleanJson);
-            } catch (e) {
-                console.warn("JSON parse fallback:", e);
-            }
-
-            const excludeZones = Array.isArray(parsed.exclude_zones) ? parsed.exclude_zones : [];
-            const finalRender = renderClustersToCanvas(step1.survivingClusters, w, h, excludeZones, aiSlopeCutoff);
-
-            // 4. リファイン済みレイヤーを地図に表示
-            const refinedDataUrl = finalRender.canvas.toDataURL('image/png');
+            const refinedDataUrl = refinedCanvas.toDataURL('image/png');
             if (refinedOverlay) map.removeLayer(refinedOverlay);
             refinedOverlay = L.imageOverlay(refinedDataUrl, map.getBounds(), { zIndex: 12, interactive: false }).addTo(map);
             
@@ -1050,23 +965,55 @@ function evaluatePixel(samples, scenes) {
             }
             isShowingRefined = true;
 
-            // 5. 結果パネルと「元に戻す」ボタンの表示
-            const flatRemoved = step1.removedFlatlandCount + finalRender.aiRemovedCount;
-            const totalRemoved = flatRemoved + step1.removedSpeckleCount;
+            const totalRemoved = step1.removedFlatlandCount + step1.removedSpeckleCount;
             document.getElementById('refineStatsBox').innerHTML = `
                 🧹 除去したノイズ塊: 計 ${totalRemoved.toLocaleString()} 箇所<br>
-                <span style="font-weight:normal; font-size:11px;">（うち平地・緩斜面等: ${flatRemoved.toLocaleString()} ／ 小塊ノイズ: ${step1.removedSpeckleCount.toLocaleString()}）</span>
+                <span style="font-weight:normal; font-size:11px;">（うち平地・緩斜面等: ${step1.removedFlatlandCount.toLocaleString()} ／ 小塊ノイズ: ${step1.removedSpeckleCount.toLocaleString()}）</span>
             `;
-            document.getElementById('refineCommentBox').innerText = parsed.summary || "山地・谷部の抽出が完了しました。";
+            document.getElementById('refineCommentBox').innerText = "🤖 AIが山地・谷部の状況を解析しています...";
             document.getElementById('aiRefinePanel').style.display = 'block';
 
             const btnReset = document.getElementById('btnResetRefine');
             btnReset.style.display = 'inline-block';
             btnReset.innerText = "↩️ 元に戻す";
 
+            // 3. 軽量化した合成画像をGeminiへ送信し、テキスト解説のみを取得（JSON座標出力によるパンクを防止）
+            const baseCanvas = captureBaseMapCanvas(w, h);
+            const sendMax = 640;
+            const scale = Math.min(1, sendMax / Math.max(w, h));
+            const compCanvas = document.createElement('canvas');
+            compCanvas.width = Math.round(w * scale);
+            compCanvas.height = Math.round(h * scale);
+            const compCtx = compCanvas.getContext('2d');
+            compCtx.drawImage(baseCanvas, 0, 0, compCanvas.width, compCanvas.height);
+            compCtx.drawImage(refinedCanvas, 0, 0, compCanvas.width, compCanvas.height);
+
+            const base64Image = compCanvas.toDataURL('image/jpeg', 0.75).split(',')[1];
+
+            const prompt = `あなたは森林・山地防災および衛星SAR（合成開口レーダー）解析の専門AIです。
+添付画像は、国土地理院の標高データを用いて「平地・緩斜面ノイズ」や「微小な斑点」を除外し、「山地および急峻な谷部（渓流沿い）のまとまった変化シグナル（赤色＝谷部の崩壊・土砂移動・湛水候補、青色＝渓流・既存水域）」を抽出したマップです。
+画面内の山地・谷筋において、どの方面（地名や方角）の谷部や渓流沿いにまとまった赤色・青色のシグナルが分布しているか、林業・山地防災の視点で2〜3文（120文字程度）で簡潔に解説してください。※JSONではなく通常の日本語テキストのみで出力してください。`;
+
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                    ]
+                }]
+            };
+
+            try {
+                const aiRes = await callGeminiWithFallback(apiKey, payload);
+                document.getElementById('refineCommentBox').innerText = aiRes.text.trim();
+            } catch (aiErr) {
+                console.warn("AI解説取得エラー:", aiErr);
+                document.getElementById('refineCommentBox').innerText = "平地・緩斜面および小塊ノイズの除去が完了しました。（※AI解説通信のみスキップされました）";
+            }
+
         } catch (error) {
             console.error(error);
-            alert("AIリファイン処理中にエラーが発生しました。\n詳細: " + error.message);
+            alert("リファイン処理中にエラーが発生しました。\n詳細: " + error.message);
         } finally {
             btnRefine.innerText = "✨ 山地用AIリファイン";
             updateRefineButtonState();
@@ -1152,11 +1099,11 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // Gemini API 呼び出し共通基盤 (Hydrogen優先・思考LOW固定・フォールバック付き)
+    // ★v2.7: Gemini API 呼び出し共通基盤 (2.5-flash廃止対応・429/503自動リトライ付き)
     // ==========================================
-    const MODEL_CANDIDATES = ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-2.5-flash"];
+    const MODEL_CANDIDATES = ["gemini-4-hydrogen", "gemini-3.8-flash"];
 
-    async function fetchWithTimeout(url, options, timeoutMs = 45000) {
+    async function fetchWithTimeout(url, options, timeoutMs = 40000) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         try { return await fetch(url, { ...options, signal: controller.signal }); } 
@@ -1164,7 +1111,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     async function callGeminiWithFallback(apiKey, basePayload) {
-        let lastErrorMsg = "";
+        const errors = [];
         for (const modelName of MODEL_CANDIDATES) {
             const supportsThinking = modelName.startsWith("gemini-4") || modelName.startsWith("gemini-3");
             const payloadWithThinking = JSON.parse(JSON.stringify(basePayload));
@@ -1174,35 +1121,43 @@ function evaluatePixel(samples, scenes) {
                     thinkingConfig: { thinkingLevel: "LOW" }
                 };
             }
-            try {
-                let response = await fetchWithTimeout(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-                    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadWithThinking) },
-                    45000
-                );
-                let data = await response.json();
-                if (data.error && response.status === 400 && supportsThinking) {
-                    response = await fetchWithTimeout(
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    let response = await fetchWithTimeout(
                         `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(basePayload) },
-                        45000
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadWithThinking) },
+                        40000
                     );
-                    data = await response.json();
+                    if ((response.status === 429 || response.status === 503) && attempt === 0) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    let data = await response.json();
+                    if (data.error && response.status === 400 && supportsThinking) {
+                        response = await fetchWithTimeout(
+                            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+                            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(basePayload) },
+                            40000
+                        );
+                        data = await response.json();
+                    }
+                    if (data.error) {
+                        errors.push(`[${modelName}] ${data.error.message}`);
+                        break;
+                    }
+                    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+                        const parts = data.candidates[0].content.parts || [];
+                        const answerPart = parts.find(p => typeof p.text === 'string' && !p.thought) || parts.find(p => typeof p.text === 'string');
+                        if (answerPart) { return { text: answerPart.text, usedModel: modelName }; }
+                    }
+                    break;
+                } catch (err) {
+                    errors.push(`[${modelName}] ${err.name === 'AbortError' ? 'タイムアウト' : err.message}`);
+                    break;
                 }
-                if (data.error) {
-                    lastErrorMsg = `[${modelName}] ${data.error.message}`;
-                    continue;
-                }
-                if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-                    const parts = data.candidates[0].content.parts || [];
-                    const answerPart = parts.find(p => typeof p.text === 'string' && !p.thought) || parts.find(p => typeof p.text === 'string');
-                    if (answerPart) { return { text: answerPart.text, usedModel: modelName }; }
-                }
-            } catch (err) {
-                lastErrorMsg = `[${modelName}] ${err.name === 'AbortError' ? 'タイムアウト(45秒超過)' : err.message}`;
             }
         }
-        throw new Error(lastErrorMsg || "AIモデルでの通信に失敗しました。APIキーや利用制限をご確認ください。");
+        throw new Error(errors.join(" / ") || "AIモデルでの通信に失敗しました。");
     }
 
     async function searchWithGemini() {
