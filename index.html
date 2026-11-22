@@ -225,7 +225,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v2.9</span>
+    <span class="app-title">浸水地図 v3.0</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -283,8 +283,7 @@
     
     <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
 
-    <!-- ★v2.9: カレンダーによる任意日付指定（日本時間基準） -->
-    <div class="filter-group" title="指定した日付以前（日本時間23:59まで）の最新SAR観測データを取得します">
+    <div class="filter-group" title="指定した日付以前（日本時間23:59まで）の最新SAR観測データと、同一軌道12日前のデータを比較します">
         <span style="font-size: 11px;">📅 基準日:</span>
         <input type="date" id="targetDateInput" style="border: none; padding: 1px 2px; font-size: 12px; font-weight: bold;">
     </div>
@@ -292,13 +291,13 @@
     <div class="filter-group">
         <span style="font-size: 11px;">感度:</span>
         <label style="cursor: pointer; margin-right: 2px; font-weight: normal; font-size: 12px;">
-            <input type="radio" name="threshRadio" value="0.03" checked onchange="updateRefineButtonState()"> 低
+            <input type="radio" name="threshRadio" value="low" onchange="updateRefineButtonState()"> 低
         </label>
         <label style="cursor: pointer; margin-right: 2px; font-weight: normal; font-size: 12px;">
-            <input type="radio" name="threshRadio" value="0.075" onchange="updateRefineButtonState()"> 中
+            <input type="radio" name="threshRadio" value="mid" checked onchange="updateRefineButtonState()"> 中
         </label>
         <label style="cursor: pointer; font-weight: normal; font-size: 12px;">
-            <input type="radio" name="threshRadio" value="0.1" onchange="updateRefineButtonState()"> 高
+            <input type="radio" name="threshRadio" value="high" onchange="updateRefineButtonState()"> 高
         </label>
     </div>
 
@@ -332,6 +331,25 @@
     function formatDateJST(dateObj) {
         const jst = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
         return jst.toISOString().split('T')[0];
+    }
+
+    function formatDateTimeJST(dateObj) {
+        const jst = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
+        const y = jst.getUTCFullYear();
+        const m = jst.getUTCMonth() + 1;
+        const d = jst.getUTCDate();
+        const hh = String(jst.getUTCHours()).padStart(2, '0');
+        const mm = String(jst.getUTCMinutes()).padStart(2, '0');
+        return `${y}年${m}月${d}日 ${hh}:${mm}`;
+    }
+
+    function formatShortDateTimeJST(dateObj) {
+        const jst = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
+        const m = jst.getUTCMonth() + 1;
+        const d = jst.getUTCDate();
+        const hh = String(jst.getUTCHours()).padStart(2, '0');
+        const mm = String(jst.getUTCMinutes()).padStart(2, '0');
+        return `${m}/${d} ${hh}:${mm}`;
     }
 
     function initDateInput() {
@@ -401,11 +419,10 @@
                 <span id="legendToggleIcon" style="font-size: 16px; font-weight: bold; color: #007bff; margin-left: 15px;">[-]</span>
             </div>
             <div id="legendContent" style="display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid #ccc;">
-                <i style="background: rgba(0, 0, 255, 0.5)"></i> 約1ヶ月前と変わらない水域・渓流<br>
-                <i style="background: rgba(255, 0, 0, 0.7)"></i> 新たな変化箇所 (谷部の崩壊・湛水等)<br>
+                <i style="background: rgba(0, 0, 255, 0.5)"></i> もとからの水域・渓流 (川・湖沼)<br>
+                <i style="background: rgba(255, 0, 0, 0.75)"></i> 同一軌道12日前より暗くなった所 (浸水・冠水・崩壊等)<br>
                 <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
-                    ※表示されている画面範囲で判定を行います。<br>
-                    ※カレンダーで指定した基準日以前（日本時間）の最新観測データと過去データを比較します。<br>
+                    ※v3.0では12日周期の同一軌道ペア（VV・VH偏波）で相対的な暗化量を判定します。<br>
                     ※感度「中」「高」で有効になる「✨ 山地用リファイン」を押すと、地理院標高データを用いて平地・緩斜面ノイズや小斑点を除去し、山地・谷部の変化シグナルを抽出します。
                 </div>
             </div>
@@ -433,18 +450,18 @@
     let lastTimeRange = "";
     let lastB64Evalscript = "";
 
-    function getSelectedThreshold() {
+    function getSelectedSensitivity() {
         const radios = document.getElementsByName('threshRadio');
         for (let i = 0; i < radios.length; i++) {
-            if (radios[i].checked) return parseFloat(radios[i].value);
+            if (radios[i].checked) return radios[i].value;
         }
-        return 0.03;
+        return 'mid';
     }
 
     function updateRefineButtonState() {
         const btnRefine = document.getElementById('btnRefine');
-        const thresh = getSelectedThreshold();
-        if (thresh <= 0.03) {
+        const sens = getSelectedSensitivity();
+        if (sens === 'low') {
             btnRefine.disabled = true;
             btnRefine.title = "感度「低」では情報の間引きが不要なため無効です（感度「中」「高」で有効）";
         } else if (!hasLoadedFloodTiles || map.getZoom() < MIN_ANALYZE_ZOOM) {
@@ -501,7 +518,6 @@
         document.getElementById('rainDisplay').style.display = 'none';
         updateRefineButtonState();
 
-        // ★v2.9: カレンダーで選択された日付の「日本時間 23:59:59」を厳密な終了時刻(UTC換算)に設定
         const dateInput = document.getElementById("targetDateInput");
         let selectedDateStr = dateInput.value;
         if (!selectedDateStr) {
@@ -509,37 +525,128 @@
             dateInput.value = selectedDateStr;
         }
 
+        // カレンダーで選択された日付の「日本時間 23:59:59」を終了時刻とし、50日前まで遡って同一軌道(12/24/36日前)を確保
         const targetEndDate = new Date(`${selectedDateStr}T23:59:59+09:00`);
-        const timeRangeStart = new Date(targetEndDate.getTime() - 45 * 24 * 60 * 60 * 1000);
+        const timeRangeStart = new Date(targetEndDate.getTime() - 50 * 24 * 60 * 60 * 1000);
 
         const toIsoSec = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
         const timeRange = `${toIsoSec(timeRangeStart)}/${toIsoSec(targetEndDate)}`;
-        const userThresh = getSelectedThreshold();
 
+        // ★v3.0: 相対変化(dB低下量) + VH偏波併用パラメータ
+        const sens = getSelectedSensitivity();
+        let dbDropVV, dbDropVH, maxLatestVV, maxLatestVH, permWaterVV;
+        if (sens === 'low') {
+            // 厳格: 明確な水面化・大きな暗化のみ抽出
+            dbDropVV = -4.5;
+            dbDropVH = -5.0;
+            maxLatestVV = 0.085;
+            maxLatestVH = 0.022;
+            permWaterVV = 0.030;
+        } else if (sens === 'high') {
+            // 高感度: 植生下の冠水や浅い湛水、山地の変化も広く拾う
+            dbDropVV = -2.3;
+            dbDropVH = -2.8;
+            maxLatestVV = 0.220;
+            maxLatestVH = 0.065;
+            permWaterVV = 0.042;
+        } else {
+            // 標準(中): 印旛沼等の水田冠水・浸水抽出に最適化
+            dbDropVV = -3.2;
+            dbDropVH = -3.8;
+            maxLatestVV = 0.140;
+            maxLatestVH = 0.040;
+            permWaterVV = 0.035;
+        }
+
+        // Note: Evalscript must be pure ASCII for btoa()
         const evalscript = `//VERSION=3
 function setup() {
-    return { input: ["VV", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
+    return { input: ["VV", "VH", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
+}
+function toDb(v) {
+    return 4.342944819 * Math.log(Math.max(v, 0.0001));
 }
 function evaluatePixel(samples, scenes) {
-    if (samples.length < 2) return [0,0,0,0];
-    var latest = samples[0]; var latestScene = scenes[0]; var past = null;
-    for (var i = 1; i < samples.length; i++) {
-        var diffMs = latestScene.date.getTime() - scenes[i].date.getTime();
-        if (scenes[i].relativeOrbitId === latestScene.relativeOrbitId && diffMs >= 864000000) { past = samples[i]; break; }
-    }
-    if (!past) {
-        for (var j = 1; j < samples.length; j++) {
-            var diffMsFallback = latestScene.date.getTime() - scenes[j].date.getTime();
-            if (diffMsFallback >= 864000000) { past = samples[j]; break; }
+    if (samples.length < 2) return [0, 0, 0, 0];
+
+    // 1. Find the latest valid observation (dataMask === 1)
+    var latestIdx = -1;
+    var latestTime = -1;
+    for (var i = 0; i < samples.length; i++) {
+        if (samples[i].dataMask === 1 && samples[i].VV > 0) {
+            var t = scenes[i].date.getTime();
+            if (t > latestTime) {
+                latestTime = t;
+                latestIdx = i;
+            }
         }
     }
-    if (!past) past = samples[samples.length - 1];
-    if (latest.dataMask !== 1 || past.dataMask !== 1) return [0,0,0,0];
-    var thresh = ${userThresh}; 
-    var waterLatest = latest.VV < thresh; var waterPast = past.VV < thresh;
-    if (waterLatest && waterPast) return [0, 0, 1, 0.5]; 
-    if (waterLatest && !waterPast) return [1, 0, 0, 0.7]; 
-    return [0,0,0,0];
+    if (latestIdx === -1) return [0, 0, 0, 0];
+
+    // 2. Pair with same-orbit observation (12, 24, or 36 days prior +/- 0.5 day)
+    var MS_DAY = 86400000.0;
+    var pastIdx = -1;
+    var bestCycleDays = 9999;
+
+    for (var j = 0; j < samples.length; j++) {
+        if (j === latestIdx || samples[j].dataMask !== 1 || samples[j].VV <= 0) continue;
+        var diffDays = (latestTime - scenes[j].date.getTime()) / MS_DAY;
+        if (diffDays < 5.5) continue;
+
+        var isSameOrbit = (Math.abs(diffDays - 12.0) <= 0.5) ||
+                          (Math.abs(diffDays - 24.0) <= 0.5) ||
+                          (Math.abs(diffDays - 36.0) <= 0.5) ||
+                          (Math.abs(diffDays - 48.0) <= 0.5);
+        if (isSameOrbit && diffDays < bestCycleDays) {
+            bestCycleDays = diffDays;
+            pastIdx = j;
+        }
+    }
+
+    // Fallback: if 12-day cycle is missing, prefer closest observation >= 10 days ago with similar time-of-day
+    if (pastIdx === -1) {
+        var bestFallbackScore = 99999;
+        for (var k = 0; k < samples.length; k++) {
+            if (k === latestIdx || samples[k].dataMask !== 1 || samples[k].VV <= 0) continue;
+            var dDays = (latestTime - scenes[k].date.getTime()) / MS_DAY;
+            if (dDays >= 5.5) {
+                var frac = dDays - Math.floor(dDays);
+                var todDiff = Math.min(frac, 1.0 - frac);
+                var score = todDiff * 100.0 + dDays;
+                if (score < bestFallbackScore) {
+                    bestFallbackScore = score;
+                    pastIdx = k;
+                }
+            }
+        }
+    }
+    if (pastIdx === -1) return [0, 0, 0, 0];
+
+    var latest = samples[latestIdx];
+    var past = samples[pastIdx];
+
+    var permWaterVV = ${permWaterVV};
+    var waterLatestPerm = latest.VV < permWaterVV;
+    var waterPastPerm = past.VV < permWaterVV;
+
+    // Permanent water (rivers, lakes, sea) -> Blue
+    if (waterLatestPerm && waterPastPerm) {
+        return [0, 0, 1, 0.5];
+    }
+
+    // Relative darkening check (dB difference) using VV & VH
+    var diffVV = toDb(latest.VV) - toDb(past.VV);
+    var hasVH = (typeof latest.VH === "number" && latest.VH > 0 && typeof past.VH === "number" && past.VH > 0);
+    var diffVH = hasVH ? (toDb(latest.VH) - toDb(past.VH)) : 0.0;
+
+    var condVV = (diffVV <= ${dbDropVV}) && (latest.VV < ${maxLatestVV});
+    var condVH = hasVH && (diffVH <= ${dbDropVH}) && (diffVV <= (${dbDropVV} * 0.45)) && (latest.VH < ${maxLatestVH});
+    var condAbs = waterLatestPerm && (past.VV >= permWaterVV * 1.4);
+
+    if (condVV || condVH || condAbs) {
+        return [1, 0, 0, 0.75];
+    }
+    return [0, 0, 0, 0];
 }`;
 
         let b64Evalscript;
@@ -576,7 +683,7 @@ function evaluatePixel(samples, scenes) {
         floodLayer.on('tileerror', function() {
              hasLoadedFloodTiles = false;
              checkZoomLevel();
-             alert('解析に失敗しました。少しズームインするか、別の時期を選択して再度お試しください。');
+             alert('解析に失敗しました。少しズームインするか、別の基準日を選択して再度お試しください。');
              if (floodLayer) { map.removeLayer(floodLayer); floodLayer = null; }
         });
         
@@ -887,7 +994,7 @@ function evaluatePixel(samples, scenes) {
             alert("先に「🌊 浸水判定」を実行してください。");
             return;
         }
-        if (getSelectedThreshold() <= 0.03) {
+        if (getSelectedSensitivity() === 'low') {
             return;
         }
 
@@ -900,8 +1007,7 @@ function evaluatePixel(samples, scenes) {
             const w = Math.round(mapSize.x);
             const h = Math.round(mapSize.y);
 
-            const userThresh = getSelectedThreshold();
-            const isHighSens = userThresh >= 0.1;
+            const isHighSens = getSelectedSensitivity() === 'high';
 
             const minRedArea = isHighSens ? 95 : 55;
             const minBlueArea = isHighSens ? 75 : 45;
@@ -970,6 +1076,7 @@ function evaluatePixel(samples, scenes) {
         }
     }
 
+    // ★v3.0: 最新シーンと、比較ペアとなる同一軌道（12/24/36日前）の日時も合わせて表示
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
@@ -977,26 +1084,61 @@ function evaluatePixel(samples, scenes) {
         const toIsoSec = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
         const startStr = toIsoSec(timeRangeStart);
         const endStr = toIsoSec(targetEndDate);
+        const center = map.getCenter();
+        // 画面中心付近の小さな範囲で検索し、画面端の別軌道シーンが混ざるのを防ぐ
+        const eps = 0.005;
+        const centerBbox = [center.lng - eps, center.lat - eps, center.lng + eps, center.lat + eps];
         
         try {
             const res = await fetch('https://catalogue.dataspace.copernicus.eu/stac/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+                    bbox: centerBbox,
                     datetime: `${startStr}/${endStr}`,
                     collections: ["sentinel-1-grd"],
-                    limit: 1,
+                    limit: 20,
                     sortby: [{ field: "datetime", direction: "desc" }]
                 })
             });
             const data = await res.json();
             
             if (data.features && data.features.length > 0) {
-                const dt = new Date(data.features[0].properties.datetime);
-                const fmt = `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日 ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
-                document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: ${fmt}`;
-                fetchRainData(map.getCenter().lat, map.getCenter().lng, dt);
+                const latestFeat = data.features[0];
+                const latestDt = new Date(latestFeat.properties.datetime);
+                const latestMs = latestDt.getTime();
+                const MS_DAY = 86400000;
+
+                // 12/24/36日前の同一軌道ペアを探索
+                let pastDt = null;
+                let bestCycleDays = 9999;
+                for (let i = 1; i < data.features.length; i++) {
+                    const dt = new Date(data.features[i].properties.datetime);
+                    const diffDays = (latestMs - dt.getTime()) / MS_DAY;
+                    if (diffDays < 5.5) continue;
+                    const isSameOrbit = (Math.abs(diffDays - 12) <= 0.5) ||
+                                        (Math.abs(diffDays - 24) <= 0.5) ||
+                                        (Math.abs(diffDays - 36) <= 0.5) ||
+                                        (Math.abs(diffDays - 48) <= 0.5);
+                    if (isSameOrbit && diffDays < bestCycleDays) {
+                        bestCycleDays = diffDays;
+                        pastDt = dt;
+                    }
+                }
+                if (!pastDt && data.features.length > 1) {
+                    for (let i = 1; i < data.features.length; i++) {
+                        const dt = new Date(data.features[i].properties.datetime);
+                        if ((latestMs - dt.getTime()) / MS_DAY >= 5.5) {
+                            pastDt = dt;
+                            break;
+                        }
+                    }
+                }
+
+                const latestFmt = formatDateTimeJST(latestDt);
+                const pairInfo = pastDt ? ` (比較: ${formatShortDateTimeJST(pastDt)})` : "";
+                document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測: ${latestFmt}${pairInfo}`;
+                fetchRainData(center.lat, center.lng, latestDt);
             } else {
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: データなし`;
             }
