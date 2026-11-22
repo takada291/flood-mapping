@@ -229,7 +229,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v3.1</span>
+    <span class="app-title">浸水地図 v3.2</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -505,10 +505,8 @@
             return;
         }
 
-        // 浸水リファイン（低地抽出・砂嵐除去）は全感度で有効
         btnFloodRefine.disabled = false;
 
-        // 山地リファインは感度「中」「高」で有効
         if (sens === 'low') {
             btnMountainRefine.disabled = true;
             btnMountainRefine.title = "感度「低」では無効です（感度「中」「高」で有効）";
@@ -580,37 +578,34 @@
         lastDisplayMode = displayMode;
         const sens = getSelectedSensitivity();
 
-        // ★v3.1: note記事の実測dB値に基づき砂嵐を大幅に抑えたパラメータ
-        // 参考: 大雨前田畑 VV=-8dB(0.158)/VH=-14dB(0.040)、確実浸水 VV=-21dB(0.008)、浅い浸水 VV=-11dB(0.079)/VH=-19dB(0.013)
         let dbDropVV, maxLatestVV, dbDropVH, maxLatestVH, vhMaxLatestVV, vhMinDropVV, permWaterVV;
         if (sens === 'low') {
-            dbDropVV = -6.0;      // VVが6dB以上低下
-            maxLatestVV = 0.032;  // 最新VVが -15dB 未満（明確な水面）
+            dbDropVV = -6.0;
+            maxLatestVV = 0.032;
             dbDropVH = -5.5;
-            maxLatestVH = 0.012;  // 最新VHが -19.2dB 未満
+            maxLatestVH = 0.012;
             vhMaxLatestVV = 0.075;
             vhMinDropVV = -2.0;
             permWaterVV = 0.025;
         } else if (sens === 'high') {
             dbDropVV = -3.8;
-            maxLatestVV = 0.070;  // 最新VVが -11.5dB 未満
-            dbDropVH = -3.3;      // note記事のVH閾値 3.3dB 相当
-            maxLatestVH = 0.022;  // 最新VHが -16.6dB 未満
+            maxLatestVV = 0.070;
+            dbDropVH = -3.3;
+            maxLatestVH = 0.022;
             vhMaxLatestVV = 0.120;
             vhMinDropVV = -1.0;
             permWaterVV = 0.035;
         } else {
-            // 標準(中)
-            dbDropVV = -5.0;      // VVが5dB以上低下
-            maxLatestVV = 0.048;  // 最新VVが -13.2dB 未満
-            dbDropVH = -4.0;      // VHが4dB以上低下
-            maxLatestVH = 0.016;  // 最新VHが -18.0dB 未満
+            dbDropVV = -5.0;
+            maxLatestVV = 0.048;
+            dbDropVH = -4.0;
+            maxLatestVH = 0.016;
             vhMaxLatestVV = 0.095;
             vhMinDropVV = -1.5;
             permWaterVV = 0.030;
         }
 
-        // 共通の同一軌道12日周期ペアリング処理（純ASCII）
+        // ★v3.2: 同一軌道12日周期ペアリング許容幅を +/-0.2日 に厳密化（朝・夕の混在防止）
         const pairFindingCode = `
 function toDb(v) {
     return 4.342944819 * Math.log(Math.max(v, 0.0001));
@@ -639,10 +634,10 @@ function findPair(samples, scenes) {
         var diffDays = (latestTime - scenes[j].date.getTime()) / MS_DAY;
         if (diffDays < 5.5) continue;
 
-        var isSameOrbit = (Math.abs(diffDays - 12.0) <= 0.5) ||
-                          (Math.abs(diffDays - 24.0) <= 0.5) ||
-                          (Math.abs(diffDays - 36.0) <= 0.5) ||
-                          (Math.abs(diffDays - 48.0) <= 0.5);
+        var isSameOrbit = (Math.abs(diffDays - 12.0) <= 0.2) ||
+                          (Math.abs(diffDays - 24.0) <= 0.2) ||
+                          (Math.abs(diffDays - 36.0) <= 0.2) ||
+                          (Math.abs(diffDays - 48.0) <= 0.2);
         if (isSameOrbit && diffDays < bestCycleDays) {
             bestCycleDays = diffDays;
             pastIdx = j;
@@ -671,7 +666,6 @@ function findPair(samples, scenes) {
 
         let evalscript = "";
         if (displayMode === 'rgb') {
-            // ★v3.1: note記事図1と同じRGBカラー合成（R=大雨前、G=大雨後、B=大雨後）
             evalscript = `//VERSION=3
 function setup() {
     return { input: ["VV", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
@@ -689,7 +683,6 @@ function evaluatePixel(samples, scenes) {
     return [r, gb, gb, 0.88];
 }`;
         } else {
-            // ★v3.1: 青(常時水域) / 赤(VV確実水面化) / オレンジ(VH浅い冠水候補) の3色出力
             evalscript = `//VERSION=3
 function setup() {
     return { input: ["VV", "VH", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
@@ -772,7 +765,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v3.1: 国土地理院 標高タイル(DEM)から「標高(m)」と「傾斜角(度)」を同時に生成
+    // 国土地理院 標高タイル(DEM)から「標高(m)」と「傾斜角(度)」を同時に生成
     // ==========================================
     async function buildTerrainMapsFromGSI(width, height) {
         const demZoom = Math.min(14, Math.max(11, map.getZoom()));
@@ -970,7 +963,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v3.1 新機能: 💧 浸水リファイン（note記事の「基準水位・台地カット・砂嵐除去」を再現）
+    // ★v3.2: 💧 浸水リファイン（VH浅い冠水候補の面積・近傍閾値を調整し0箇所化を防止）
     // ==========================================
     async function refineForLowland() {
         if (!floodLayer || !hasLoadedFloodTiles || lastDisplayMode !== 'flood') {
@@ -1009,7 +1002,6 @@ function evaluatePixel(samples, scenes) {
                 waterEles.sort((a, b) => a - b);
                 baseWaterLevel = waterEles[Math.floor(waterEles.length * 0.30)];
             } else {
-                // 水域が少ない場合は画面全体の低地(下位15%点)を基準に採用
                 const allEles = [];
                 for (let i = 0; i < totalPx; i += 8) {
                     const e = screenEle[i];
@@ -1021,7 +1013,6 @@ function evaluatePixel(samples, scenes) {
                 }
             }
 
-            // 浸水し得る上限標高（基準水位 + 12m。note記事の「標高15m以上の台地を除外」の自動適応版）
             const maxFloodEle = baseWaterLevel + 12.0;
 
             // 2. 高台・台地・急斜面の赤/オレンジを事前カット
@@ -1032,17 +1023,14 @@ function evaluatePixel(samples, scenes) {
                 const ele = screenEle[i];
                 const slope = screenSlope[i];
                 if (t === 2) {
-                    // 青（常時水域）は急斜面(10度以上)の山肌シャドウのみカット
                     if (slope < 10.0) filteredGrid[i] = 2;
                 } else {
-                    // 赤・オレンジ（浸水候補）は基準水位+12m以下かつ傾斜5.5度以下の低地のみ残す
                     const isLowland = isNaN(ele) ? true : (ele <= maxFloodEle);
                     if (isLowland && slope < 5.5) filteredGrid[i] = t;
                 }
             }
 
-            // 3. 3x3近傍密度フィルタで砂嵐（孤立点・1pxの点々）を消去
-            // 赤(1)とオレンジ(3)は互いに隣接していれば「浸水仲間」としてカウントし、干拓地の縁が消えにくくする
+            // 3. 3x3近傍密度フィルタ（オレンジの浅い冠水は細く点在しやすいため3px以上、赤・青は4px以上で残す）
             const cleanedGrid = new Uint8Array(totalPx);
             for (let y = 1; y < h - 1; y++) {
                 for (let x = 1; x < w - 1; x++) {
@@ -1061,7 +1049,8 @@ function evaluatePixel(samples, scenes) {
                             }
                         }
                     }
-                    if (cnt >= 4) cleanedGrid[i] = t;
+                    const minNeighbors = (t === 3) ? 3 : 4;
+                    if (cnt >= minNeighbors) cleanedGrid[i] = t;
                 }
             }
 
@@ -1076,7 +1065,8 @@ function evaluatePixel(samples, scenes) {
 
             const sens = getSelectedSensitivity();
             const minRedArea = sens === 'high' ? 35 : (sens === 'mid' ? 24 : 16);
-            const minOrangeArea = sens === 'high' ? 50 : (sens === 'mid' ? 35 : 22);
+            // ★v3.2: オレンジ(VH浅い冠水)の最小面積を緩和し、干拓地の縁や水田の冠水が消えすぎないよう調整
+            const minOrangeArea = sens === 'high' ? 20 : (sens === 'mid' ? 14 : 10);
             const minBlueArea = 18;
 
             for (let i = 0; i < totalPx; i++) {
@@ -1120,8 +1110,7 @@ function evaluatePixel(samples, scenes) {
                     if (area < minRedArea) { removedSpeckleCount++; continue; }
                     survivedRedCount++;
                 } else if (t === 3) {
-                    // VHの浅い浸水は基準水位+7.5m以下の極低地でまとまった塊だけを残す
-                    if (avgEle > baseWaterLevel + 7.5) { removedPlateauCount++; continue; }
+                    if (avgEle > baseWaterLevel + 9.0) { removedPlateauCount++; continue; }
                     if (area < minOrangeArea) { removedSpeckleCount++; continue; }
                     survivedOrangeCount++;
                 }
@@ -1165,7 +1154,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // 既存の ⛰️ 山地リファイン（平地・緩斜面カット ＋ 小塊カット）
+    // ⛰️ 山地リファイン（平地・緩斜面カット ＋ 小塊カット）
     // ==========================================
     async function refineForMountain() {
         if (!floodLayer || !hasLoadedFloodTiles || lastDisplayMode !== 'flood') {
@@ -1333,6 +1322,7 @@ function evaluatePixel(samples, scenes) {
         }
     }
 
+    // ★v3.2: 比較日時検索の同一軌道許容幅も +/-0.2日 に厳密化
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
@@ -1372,10 +1362,10 @@ function evaluatePixel(samples, scenes) {
                     const dt = new Date(data.features[i].properties.datetime);
                     const diffDays = (latestMs - dt.getTime()) / MS_DAY;
                     if (diffDays < 5.5) continue;
-                    const isSameOrbit = (Math.abs(diffDays - 12) <= 0.5) ||
-                                        (Math.abs(diffDays - 24) <= 0.5) ||
-                                        (Math.abs(diffDays - 36) <= 0.5) ||
-                                        (Math.abs(diffDays - 48) <= 0.5);
+                    const isSameOrbit = (Math.abs(diffDays - 12) <= 0.2) ||
+                                        (Math.abs(diffDays - 24) <= 0.2) ||
+                                        (Math.abs(diffDays - 36) <= 0.2) ||
+                                        (Math.abs(diffDays - 48) <= 0.2);
                     if (isSameOrbit && diffDays < bestCycleDays) {
                         bestCycleDays = diffDays;
                         pastDt = dt;
