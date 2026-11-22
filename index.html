@@ -30,7 +30,7 @@
             padding: 8px;
             background: #f8f9fa;
             display: flex;
-            gap: 8px;
+            gap: 6px;
             align-items: center;
             z-index: 1000;
             border-bottom: 1px solid #ccc;
@@ -47,8 +47,8 @@
         }
 
         button {
-            padding: 6px 12px;
-            font-size: 13px;
+            padding: 6px 10px;
+            font-size: 12.5px;
             background-color: #007bff;
             color: white;
             border: none;
@@ -73,6 +73,9 @@
         #btnAnalyze { background-color: #dc3545; }
         #btnAnalyze:hover { background-color: #c82333; }
 
+        #btnFloodRefine { background-color: #007bff; }
+        #btnFloodRefine:hover { background-color: #0056b3; }
+
         #btnRefine { background-color: #e67e22; }
         #btnRefine:hover { background-color: #d35400; }
 
@@ -84,7 +87,7 @@
 
         select, input[type="text"], input[type="password"], input[type="date"] {
             padding: 5px;
-            font-size: 13px;
+            font-size: 12.5px;
             border-radius: 4px;
             border: 1px solid #ccc;
             font-family: inherit;
@@ -93,12 +96,12 @@
         .filter-group {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
             background: white;
-            padding: 4px 8px;
+            padding: 3px 7px;
             border-radius: 4px;
             border: 1px solid #ccc;
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: bold;
         }
         
@@ -115,7 +118,7 @@
         }
 
         .info-box {
-            font-size: 13px; 
+            font-size: 12.5px; 
             font-weight: bold;
             color: #d32f2f;
             background: rgba(255, 255, 255, 0.92);
@@ -137,10 +140,10 @@
             top: 12px;
             right: 55px;
             z-index: 1000;
-            width: 310px;
+            width: 315px;
             max-width: calc(100vw - 80px);
             background: rgba(255, 255, 255, 0.96);
-            border: 2px solid #e67e22;
+            border: 2px solid #007bff;
             border-radius: 8px;
             padding: 10px 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
@@ -154,8 +157,8 @@
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
-            color: #d35400;
-            border-bottom: 1px solid #f0d0b0;
+            color: #0056b3;
+            border-bottom: 1px solid #cfe2ff;
             padding-bottom: 5px;
             margin-bottom: 6px;
             font-size: 13px;
@@ -168,36 +171,37 @@
         }
         .refine-close:hover { color: #333; }
         .refine-stats {
-            background: #fff8f0;
-            border: 1px solid #fae5d3;
+            background: #f8fbff;
+            border: 1px solid #dce9f9;
             border-radius: 4px;
             padding: 6px 8px;
             font-weight: bold;
-            color: #a04000;
+            color: #2c3e50;
             font-size: 11.5px;
         }
 
         .info.legend {
             background: rgba(255, 255, 255, 0.95);
             padding: 10px 15px;
-            font-size: 13px;
-            line-height: 22px;
+            font-size: 12.5px;
+            line-height: 21px;
             color: #333;
             border-radius: 5px;
             box-shadow: 0 0 15px rgba(0,0,0,0.2);
             cursor: pointer;
             pointer-events: auto;
             margin-bottom: 20px !important;
-            max-height: 40vh;
+            max-height: 45vh;
             overflow-y: auto;
         }
-        .info.legend h4 { margin: 0; font-size: 14px; color: #004d26; }
+        .info.legend h4 { margin: 0; font-size: 13.5px; color: #004d26; }
         .info.legend i {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             float: left;
             margin-right: 8px;
-            opacity: 0.8;
+            margin-top: 2px;
+            opacity: 0.85;
             border: 1px solid #999;
             border-radius: 2px;
         }
@@ -225,7 +229,7 @@
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v3.0</span>
+    <span class="app-title">浸水地図 v3.1</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -277,18 +281,22 @@
         <option value="26.212,127.681">沖縄県</option>
     </select>
     
-    <input type="password" id="geminiApiKey" placeholder="Gemini APIキー" style="width: 120px;">
-    <input type="text" id="aiSearchInput" placeholder="県+市や東尋坊などの名称" onkeypress="handleAiSearchEnter(event)" style="width: 180px;">
+    <input type="password" id="geminiApiKey" placeholder="Gemini APIキー" style="width: 110px;">
+    <input type="text" id="aiSearchInput" placeholder="県+市や地名" onkeypress="handleAiSearchEnter(event)" style="width: 140px;">
     <button id="btnAiSearch" onclick="searchWithGemini()">🤖 検索</button>
-    
-    <button id="btnGps" onclick="getLocation()">🎯 現在地へ</button>
+    <button id="btnGps" onclick="getLocation()">🎯 現在地</button>
 
     <div class="filter-group" title="指定した日付以前（日本時間23:59まで）の最新SAR観測データと、同一軌道12日前のデータを比較します">
-        <span style="font-size: 11px;">📅 基準日:</span>
+        <span style="font-size: 11px;">📅</span>
         <input type="date" id="targetDateInput" style="border: none; padding: 1px 2px; font-size: 12px; font-weight: bold;">
     </div>
 
-    <div class="filter-group">
+    <select id="displayModeSelect" onchange="onDisplayModeChange()" title="浸水判定（赤・オレンジ・青）と、RGB変化カラー合成（赤＝暗化・シアン＝明化）を切り替えます">
+        <option value="flood" selected>表示: 浸水判定</option>
+        <option value="rgb">表示: RGB変化(図1風)</option>
+    </select>
+
+    <div class="filter-group" id="sensGroup">
         <span style="font-size: 11px;">感度:</span>
         <label style="cursor: pointer; margin-right: 2px; font-weight: normal; font-size: 12px;">
             <input type="radio" name="threshRadio" value="low" onchange="updateRefineButtonState()"> 低
@@ -301,18 +309,19 @@
         </label>
     </div>
 
-    <button id="btnAnalyze" onclick="analyzeFlood()">🌊 浸水判定</button>
-    <button id="btnRefine" onclick="refineFloodWithAI()" disabled title="感度「中」「高」での判定後に有効になります">✨ 山地用リファイン</button>
+    <button id="btnAnalyze" onclick="analyzeFlood()">🌊 判定</button>
+    <button id="btnFloodRefine" onclick="refineForLowland()" disabled title="水域標高から基準水位を推定し、高台・台地のノイズと細かい砂嵐を除去します">💧 浸水リファイン</button>
+    <button id="btnRefine" onclick="refineForMountain()" disabled title="平地・緩斜面を除外し、山地・谷部の変化シグナルを抽出します（感度「中」「高」で有効）">⛰️ 山地リファイン</button>
     <button id="btnResetRefine" onclick="toggleRefineView()">↩️ 元に戻す</button>
 </div>
 
 <div id="map">
     <div class="crosshair"></div>
 
-    <!-- リファイン結果パネル（除去結果のみ即時表示） -->
+    <!-- リファイン結果パネル -->
     <div id="aiRefinePanel">
-        <div class="refine-header">
-            <span>✨ 山地・谷部リファイン結果</span>
+        <div class="refine-header" id="refineHeaderTitle">
+            <span id="refineTitleText">✨ リファイン結果</span>
             <span class="refine-close" onclick="document.getElementById('aiRefinePanel').style.display='none'">✕</span>
         </div>
         <div id="refineStatsBox" class="refine-stats"></div>
@@ -327,7 +336,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    // 日本時間（JST）の YYYY-MM-DD 文字列を返す
     function formatDateJST(dateObj) {
         const jst = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
         return jst.toISOString().split('T')[0];
@@ -419,11 +427,19 @@
                 <span id="legendToggleIcon" style="font-size: 16px; font-weight: bold; color: #007bff; margin-left: 15px;">[-]</span>
             </div>
             <div id="legendContent" style="display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid #ccc;">
-                <i style="background: rgba(0, 0, 255, 0.5)"></i> もとからの水域・渓流 (川・湖沼)<br>
-                <i style="background: rgba(255, 0, 0, 0.75)"></i> 同一軌道12日前より暗くなった所 (浸水・冠水・崩壊等)<br>
-                <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.3;">
-                    ※v3.0では12日周期の同一軌道ペア（VV・VH偏波）で相対的な暗化量を判定します。<br>
-                    ※感度「中」「高」で有効になる「✨ 山地用リファイン」を押すと、地理院標高データを用いて平地・緩斜面ノイズや小斑点を除去し、山地・谷部の変化シグナルを抽出します。
+                <div id="legendFloodItems">
+                    <i style="background: rgba(0, 0, 255, 0.55)"></i> もとからの水域・渓流 (川・湖沼)<br>
+                    <i style="background: rgba(255, 0, 0, 0.8)"></i> 確実な水面化・強い暗化 (VV偏波)<br>
+                    <i style="background: rgba(255, 140, 0, 0.72)"></i> 浅い冠水・植生下の浸水候補 (VH偏波)<br>
+                </div>
+                <div id="legendRgbItems" style="display: none;">
+                    <i style="background: rgb(220, 30, 30)"></i> 大雨後に暗くなった所 (浸水・水面化)<br>
+                    <i style="background: rgb(40, 200, 210)"></i> 大雨後に明るくなった所 (2回反射等)<br>
+                    <i style="background: rgb(25, 25, 25)"></i> もとからの水面 (川・湖沼)<br>
+                </div>
+                <div style="margin-top: 8px; font-size: 11px; color: #666; line-height: 1.35;">
+                    ※「💧 浸水リファイン」は地理院標高から川・沼の水位を推定し、高台の誤検知と細かい砂嵐を除去します。<br>
+                    ※「⛰️ 山地リファイン」は平地を除き、山地・谷部の変化を抽出します。
                 </div>
             </div>
         `;
@@ -445,6 +461,7 @@
 
     let floodLayer = null;
     let hasLoadedFloodTiles = false;
+    let lastDisplayMode = 'flood';
     let refinedOverlay = null;
     let isShowingRefined = false;
     let lastTimeRange = "";
@@ -458,18 +475,46 @@
         return 'mid';
     }
 
-    function updateRefineButtonState() {
-        const btnRefine = document.getElementById('btnRefine');
-        const sens = getSelectedSensitivity();
-        if (sens === 'low') {
-            btnRefine.disabled = true;
-            btnRefine.title = "感度「低」では情報の間引きが不要なため無効です（感度「中」「高」で有効）";
-        } else if (!hasLoadedFloodTiles || map.getZoom() < MIN_ANALYZE_ZOOM) {
-            btnRefine.disabled = true;
-            btnRefine.title = "先に感度「中」または「高」で「🌊 浸水判定」を実行してください";
+    function onDisplayModeChange() {
+        const mode = document.getElementById('displayModeSelect').value;
+        const sensGroup = document.getElementById('sensGroup');
+        const legendFlood = document.getElementById('legendFloodItems');
+        const legendRgb = document.getElementById('legendRgbItems');
+        if (mode === 'rgb') {
+            sensGroup.style.opacity = '0.5';
+            if (legendFlood) legendFlood.style.display = 'none';
+            if (legendRgb) legendRgb.style.display = 'block';
         } else {
-            btnRefine.disabled = false;
-            btnRefine.title = "平地・緩斜面ノイズや小斑点を除去し、山地・谷部の崩壊・湛水シグナルを抽出します";
+            sensGroup.style.opacity = '1';
+            if (legendFlood) legendFlood.style.display = 'block';
+            if (legendRgb) legendRgb.style.display = 'none';
+        }
+        updateRefineButtonState();
+    }
+
+    function updateRefineButtonState() {
+        const btnFloodRefine = document.getElementById('btnFloodRefine');
+        const btnMountainRefine = document.getElementById('btnRefine');
+        const sens = getSelectedSensitivity();
+        const isValidZoom = map.getZoom() >= MIN_ANALYZE_ZOOM;
+        const isFloodModeLoaded = hasLoadedFloodTiles && lastDisplayMode === 'flood';
+
+        if (!isFloodModeLoaded || !isValidZoom) {
+            btnFloodRefine.disabled = true;
+            btnMountainRefine.disabled = true;
+            return;
+        }
+
+        // 浸水リファイン（低地抽出・砂嵐除去）は全感度で有効
+        btnFloodRefine.disabled = false;
+
+        // 山地リファインは感度「中」「高」で有効
+        if (sens === 'low') {
+            btnMountainRefine.disabled = true;
+            btnMountainRefine.title = "感度「低」では無効です（感度「中」「高」で有効）";
+        } else {
+            btnMountainRefine.disabled = false;
+            btnMountainRefine.title = "平地・緩斜面ノイズや小斑点を除去し、山地・谷部の変化シグナルを抽出します";
         }
     }
 
@@ -487,7 +532,7 @@
         const btn = document.getElementById('btnAnalyze');
         if (map.getZoom() < MIN_ANALYZE_ZOOM) {
             btn.disabled = true;
-            btn.innerText = "🔍 ズームイン必須";
+            btn.innerText = "🔍 ズーム必須";
             hasLoadedFloodTiles = false;
             updateRefineButtonState();
             clearRefinedState();
@@ -499,7 +544,7 @@
             }
         } else {
             btn.disabled = false;
-            btn.innerText = "🌊 浸水判定";
+            btn.innerText = "🌊 判定";
             updateRefineButtonState();
         }
     }
@@ -525,51 +570,53 @@
             dateInput.value = selectedDateStr;
         }
 
-        // カレンダーで選択された日付の「日本時間 23:59:59」を終了時刻とし、50日前まで遡って同一軌道(12/24/36日前)を確保
         const targetEndDate = new Date(`${selectedDateStr}T23:59:59+09:00`);
         const timeRangeStart = new Date(targetEndDate.getTime() - 50 * 24 * 60 * 60 * 1000);
 
         const toIsoSec = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
         const timeRange = `${toIsoSec(timeRangeStart)}/${toIsoSec(targetEndDate)}`;
 
-        // ★v3.0: 相対変化(dB低下量) + VH偏波併用パラメータ
+        const displayMode = document.getElementById('displayModeSelect').value;
+        lastDisplayMode = displayMode;
         const sens = getSelectedSensitivity();
-        let dbDropVV, dbDropVH, maxLatestVV, maxLatestVH, permWaterVV;
+
+        // ★v3.1: note記事の実測dB値に基づき砂嵐を大幅に抑えたパラメータ
+        // 参考: 大雨前田畑 VV=-8dB(0.158)/VH=-14dB(0.040)、確実浸水 VV=-21dB(0.008)、浅い浸水 VV=-11dB(0.079)/VH=-19dB(0.013)
+        let dbDropVV, maxLatestVV, dbDropVH, maxLatestVH, vhMaxLatestVV, vhMinDropVV, permWaterVV;
         if (sens === 'low') {
-            // 厳格: 明確な水面化・大きな暗化のみ抽出
-            dbDropVV = -4.5;
-            dbDropVH = -5.0;
-            maxLatestVV = 0.085;
-            maxLatestVH = 0.022;
-            permWaterVV = 0.030;
+            dbDropVV = -6.0;      // VVが6dB以上低下
+            maxLatestVV = 0.032;  // 最新VVが -15dB 未満（明確な水面）
+            dbDropVH = -5.5;
+            maxLatestVH = 0.012;  // 最新VHが -19.2dB 未満
+            vhMaxLatestVV = 0.075;
+            vhMinDropVV = -2.0;
+            permWaterVV = 0.025;
         } else if (sens === 'high') {
-            // 高感度: 植生下の冠水や浅い湛水、山地の変化も広く拾う
-            dbDropVV = -2.3;
-            dbDropVH = -2.8;
-            maxLatestVV = 0.220;
-            maxLatestVH = 0.065;
-            permWaterVV = 0.042;
-        } else {
-            // 標準(中): 印旛沼等の水田冠水・浸水抽出に最適化
-            dbDropVV = -3.2;
-            dbDropVH = -3.8;
-            maxLatestVV = 0.140;
-            maxLatestVH = 0.040;
+            dbDropVV = -3.8;
+            maxLatestVV = 0.070;  // 最新VVが -11.5dB 未満
+            dbDropVH = -3.3;      // note記事のVH閾値 3.3dB 相当
+            maxLatestVH = 0.022;  // 最新VHが -16.6dB 未満
+            vhMaxLatestVV = 0.120;
+            vhMinDropVV = -1.0;
             permWaterVV = 0.035;
+        } else {
+            // 標準(中)
+            dbDropVV = -5.0;      // VVが5dB以上低下
+            maxLatestVV = 0.048;  // 最新VVが -13.2dB 未満
+            dbDropVH = -4.0;      // VHが4dB以上低下
+            maxLatestVH = 0.016;  // 最新VHが -18.0dB 未満
+            vhMaxLatestVV = 0.095;
+            vhMinDropVV = -1.5;
+            permWaterVV = 0.030;
         }
 
-        // Note: Evalscript must be pure ASCII for btoa()
-        const evalscript = `//VERSION=3
-function setup() {
-    return { input: ["VV", "VH", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
-}
+        // 共通の同一軌道12日周期ペアリング処理（純ASCII）
+        const pairFindingCode = `
 function toDb(v) {
     return 4.342944819 * Math.log(Math.max(v, 0.0001));
 }
-function evaluatePixel(samples, scenes) {
-    if (samples.length < 2) return [0, 0, 0, 0];
-
-    // 1. Find the latest valid observation (dataMask === 1)
+function findPair(samples, scenes) {
+    if (samples.length < 2) return null;
     var latestIdx = -1;
     var latestTime = -1;
     for (var i = 0; i < samples.length; i++) {
@@ -581,9 +628,8 @@ function evaluatePixel(samples, scenes) {
             }
         }
     }
-    if (latestIdx === -1) return [0, 0, 0, 0];
+    if (latestIdx === -1) return null;
 
-    // 2. Pair with same-orbit observation (12, 24, or 36 days prior +/- 0.5 day)
     var MS_DAY = 86400000.0;
     var pastIdx = -1;
     var bestCycleDays = 9999;
@@ -603,9 +649,8 @@ function evaluatePixel(samples, scenes) {
         }
     }
 
-    // Fallback: if 12-day cycle is missing, prefer closest observation >= 10 days ago with similar time-of-day
     if (pastIdx === -1) {
-        var bestFallbackScore = 99999;
+        var bestScore = 99999;
         for (var k = 0; k < samples.length; k++) {
             if (k === latestIdx || samples[k].dataMask !== 1 || samples[k].VV <= 0) continue;
             var dDays = (latestTime - scenes[k].date.getTime()) / MS_DAY;
@@ -613,41 +658,77 @@ function evaluatePixel(samples, scenes) {
                 var frac = dDays - Math.floor(dDays);
                 var todDiff = Math.min(frac, 1.0 - frac);
                 var score = todDiff * 100.0 + dDays;
-                if (score < bestFallbackScore) {
-                    bestFallbackScore = score;
+                if (score < bestScore) {
+                    bestScore = score;
                     pastIdx = k;
                 }
             }
         }
     }
-    if (pastIdx === -1) return [0, 0, 0, 0];
+    if (pastIdx === -1) return null;
+    return { latest: samples[latestIdx], past: samples[pastIdx] };
+}`;
 
-    var latest = samples[latestIdx];
-    var past = samples[pastIdx];
+        let evalscript = "";
+        if (displayMode === 'rgb') {
+            // ★v3.1: note記事図1と同じRGBカラー合成（R=大雨前、G=大雨後、B=大雨後）
+            evalscript = `//VERSION=3
+function setup() {
+    return { input: ["VV", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
+}
+${pairFindingCode}
+function normDb(db) {
+    var v = (db + 23.0) / 21.0;
+    return Math.max(0.0, Math.min(1.0, v));
+}
+function evaluatePixel(samples, scenes) {
+    var pair = findPair(samples, scenes);
+    if (!pair) return [0, 0, 0, 0];
+    var r = normDb(toDb(pair.past.VV));
+    var gb = normDb(toDb(pair.latest.VV));
+    return [r, gb, gb, 0.88];
+}`;
+        } else {
+            // ★v3.1: 青(常時水域) / 赤(VV確実水面化) / オレンジ(VH浅い冠水候補) の3色出力
+            evalscript = `//VERSION=3
+function setup() {
+    return { input: ["VV", "VH", "dataMask"], output: { bands: 4 }, mosaicking: "ORBIT" };
+}
+${pairFindingCode}
+function evaluatePixel(samples, scenes) {
+    var pair = findPair(samples, scenes);
+    if (!pair) return [0, 0, 0, 0];
+    var latest = pair.latest;
+    var past = pair.past;
 
     var permWaterVV = ${permWaterVV};
     var waterLatestPerm = latest.VV < permWaterVV;
     var waterPastPerm = past.VV < permWaterVV;
 
-    // Permanent water (rivers, lakes, sea) -> Blue
     if (waterLatestPerm && waterPastPerm) {
-        return [0, 0, 1, 0.5];
+        return [0, 0, 1, 0.55];
     }
 
-    // Relative darkening check (dB difference) using VV & VH
     var diffVV = toDb(latest.VV) - toDb(past.VV);
     var hasVH = (typeof latest.VH === "number" && latest.VH > 0 && typeof past.VH === "number" && past.VH > 0);
     var diffVH = hasVH ? (toDb(latest.VH) - toDb(past.VH)) : 0.0;
 
+    // 1. Definite water darkening (VV) -> Red
     var condVV = (diffVV <= ${dbDropVV}) && (latest.VV < ${maxLatestVV});
-    var condVH = hasVH && (diffVH <= ${dbDropVH}) && (diffVV <= (${dbDropVV} * 0.45)) && (latest.VH < ${maxLatestVH});
-    var condAbs = waterLatestPerm && (past.VV >= permWaterVV * 1.4);
-
-    if (condVV || condVH || condAbs) {
-        return [1, 0, 0, 0.75];
+    var condAbs = waterLatestPerm && (past.VV >= permWaterVV * 1.8);
+    if (condVV || condAbs) {
+        return [1, 0, 0, 0.80];
     }
+
+    // 2. Shallow / vegetated inundation candidate (VH) -> Orange
+    var condVH = hasVH && (diffVH <= ${dbDropVH}) && (latest.VH < ${maxLatestVH}) && (latest.VV < ${vhMaxLatestVV}) && (diffVV <= ${vhMinDropVV});
+    if (condVH) {
+        return [1, 0.55, 0, 0.72];
+    }
+
     return [0, 0, 0, 0];
 }`;
+        }
 
         let b64Evalscript;
         try {
@@ -691,9 +772,9 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // 国土地理院 標高タイル(DEM)から「山地・谷部」の傾斜指標を生成
+    // ★v3.1: 国土地理院 標高タイル(DEM)から「標高(m)」と「傾斜角(度)」を同時に生成
     // ==========================================
-    async function buildSlopeMapFromGSI(width, height) {
+    async function buildTerrainMapsFromGSI(width, height) {
         const demZoom = Math.min(14, Math.max(11, map.getZoom()));
         const bounds = map.getBounds();
         const topLeft = map.project(bounds.getNorthWest(), demZoom);
@@ -779,6 +860,7 @@ function evaluatePixel(samples, scenes) {
         }
 
         const screenSlope = new Float32Array(width * height);
+        const screenEle = new Float32Array(width * height);
         const spanX = bottomRight.x - topLeft.x;
         const spanY = bottomRight.y - topLeft.y;
         const baseX = minTileX * tw;
@@ -793,16 +875,15 @@ function evaluatePixel(samples, scenes) {
             for (let px = 0; px < width; px++) {
                 const projX = topLeft.x + (px / width) * spanX;
                 const dx = Math.max(0, Math.min(demW - 1, Math.floor(projX - baseX)));
-                screenSlope[screenRowOffset + px] = demSlope[demRowOffset + dx];
+                const dIdx = demRowOffset + dx;
+                screenSlope[screenRowOffset + px] = demSlope[dIdx];
+                screenEle[screenRowOffset + px] = eleGrid[dIdx];
             }
         }
 
-        return screenSlope;
+        return { screenEle, screenSlope };
     }
 
-    // ==========================================
-    // 山地・谷部抽出フィルタ（緩斜面カット ＋ 小塊カット）
-    // ==========================================
     async function captureFloodCanvas(width, height) {
         const mapEl = document.getElementById('map');
         const mapRect = mapEl.getBoundingClientRect();
@@ -838,131 +919,31 @@ function evaluatePixel(samples, scenes) {
         return canvas;
     }
 
-    function filterFlatlandAndSpeckleNoise(floodCanvas, screenSlope, minRedArea, minBlueArea, pixelRedSlopeMin, clusterRedSlopeMin, clusterBlueSlopeMin) {
+    // 共通ピクセル色分類: 0=無, 1=赤(VV確実水面), 2=青(常時水域), 3=オレンジ(VH浅い浸水)
+    function classifyPixels(floodCanvas) {
         const w = floodCanvas.width;
         const h = floodCanvas.height;
-        const ctx = floodCanvas.getContext('2d', { willReadFrequently: true });
-        const imgData = ctx.getImageData(0, 0, w, h);
-        const data = imgData.data;
+        const data = floodCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
         const totalPx = w * h;
+        const grid = new Uint8Array(totalPx);
 
-        const typeGrid = new Uint8Array(totalPx);
         for (let i = 0; i < totalPx; i++) {
             const idx = i * 4;
             const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
             if (a > 40) {
-                const slope = screenSlope ? screenSlope[i] : 15;
-                if (r > 150 && g < 100 && b < 100) {
-                    if (slope >= pixelRedSlopeMin) typeGrid[i] = 1;
-                } else if (b > 150 && r < 100 && g < 100) {
-                    typeGrid[i] = 2;
+                if (b > 150 && r < 100 && g < 100) {
+                    grid[i] = 2; // 青
+                } else if (r > 160 && g < 85 && b < 85) {
+                    grid[i] = 1; // 赤
+                } else if (r > 160 && g >= 85 && g < 205 && b < 85) {
+                    grid[i] = 3; // オレンジ
                 }
             }
         }
-
-        const cleanedGrid = new Uint8Array(totalPx);
-        for (let y = 1; y < h - 1; y++) {
-            for (let x = 1; x < w - 1; x++) {
-                const i = y * w + x;
-                const t = typeGrid[i];
-                if (t === 0) continue;
-                let sameCount = 0;
-                for (let dy = -1; dy <= 1; dy++) {
-                    const rowOffset = (y + dy) * w + x;
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (typeGrid[rowOffset + dx] === t) sameCount++;
-                    }
-                }
-                if (sameCount >= 5) cleanedGrid[i] = t;
-            }
-        }
-
-        const visited = new Uint8Array(totalPx);
-        const clusters = [];
-        const queue = new Int32Array(totalPx);
-
-        for (let i = 0; i < totalPx; i++) {
-            const t = cleanedGrid[i];
-            if (t === 0 || visited[i]) continue;
-
-            let head = 0, tail = 0;
-            queue[tail++] = i;
-            visited[i] = 1;
-
-            const pixels = [];
-            let slopeSum = 0;
-
-            while (head < tail) {
-                const curr = queue[head++];
-                pixels.push(curr);
-                if (screenSlope) slopeSum += screenSlope[curr];
-
-                const cx = curr % w;
-                const neighbors = [curr - 1, curr + 1, curr - w, curr + w];
-                for (let n = 0; n < 4; n++) {
-                    const ni = neighbors[n];
-                    if (ni >= 0 && ni < totalPx && !visited[ni] && cleanedGrid[ni] === t) {
-                        const nx = ni % w;
-                        if (Math.abs(nx - cx) <= 1) {
-                            visited[ni] = 1;
-                            queue[tail++] = ni;
-                        }
-                    }
-                }
-            }
-
-            const area = pixels.length;
-            const avgSlope = slopeSum / area;
-
-            clusters.push({
-                type: t,
-                pixels,
-                area,
-                avgSlope
-            });
-        }
-
-        let removedSpeckleCount = 0;
-        let removedFlatlandCount = 0;
-        let survivedRedCount = 0;
-        let survivedBlueCount = 0;
-        const survivingClusters = [];
-
-        for (const c of clusters) {
-            if (c.type === 1) {
-                if (c.avgSlope < clusterRedSlopeMin) {
-                    removedFlatlandCount++;
-                    continue;
-                }
-                if (c.area < minRedArea) {
-                    removedSpeckleCount++;
-                    continue;
-                }
-                survivedRedCount++;
-            } else if (c.type === 2) {
-                if (c.avgSlope < clusterBlueSlopeMin && c.area < 450) {
-                    removedFlatlandCount++;
-                    continue;
-                }
-                if (c.area < minBlueArea) {
-                    removedSpeckleCount++;
-                    continue;
-                }
-                survivedBlueCount++;
-            }
-            survivingClusters.push(c);
-        }
-
-        return {
-            survivingClusters,
-            removedSpeckleCount,
-            removedFlatlandCount,
-            survivedRedCount,
-            survivedBlueCount
-        };
+        return { grid, w, h };
     }
 
-    function renderClustersToCanvas(clusters, width, height) {
+    function renderTypedClustersToCanvas(clusters, width, height) {
         const outCanvas = document.createElement('canvas');
         outCanvas.width = width;
         outCanvas.height = height;
@@ -971,10 +952,10 @@ function evaluatePixel(samples, scenes) {
         const out = imgData.data;
 
         for (const c of clusters) {
-            const r = (c.type === 1) ? 255 : 0;
-            const g = 0;
-            const b = (c.type === 2) ? 255 : 0;
-            const a = (c.type === 1) ? 195 : 140;
+            let r = 0, g = 0, b = 0, a = 0;
+            if (c.type === 1) { r = 255; g = 0; b = 0; a = 205; }
+            else if (c.type === 2) { r = 0; g = 0; b = 255; a = 140; }
+            else if (c.type === 3) { r = 255; g = 140; b = 0; a = 185; }
 
             for (let i = 0; i < c.pixels.length; i++) {
                 const pIdx = c.pixels[i] * 4;
@@ -984,68 +965,191 @@ function evaluatePixel(samples, scenes) {
                 out[pIdx + 3] = a;
             }
         }
-
         ctx.putImageData(imgData, 0, 0);
         return outCanvas;
     }
 
-    async function refineFloodWithAI() {
-        if (!floodLayer || !hasLoadedFloodTiles) {
-            alert("先に「🌊 浸水判定」を実行してください。");
-            return;
-        }
-        if (getSelectedSensitivity() === 'low') {
+    // ==========================================
+    // ★v3.1 新機能: 💧 浸水リファイン（note記事の「基準水位・台地カット・砂嵐除去」を再現）
+    // ==========================================
+    async function refineForLowland() {
+        if (!floodLayer || !hasLoadedFloodTiles || lastDisplayMode !== 'flood') {
+            alert("先に表示「浸水判定」で「🌊 判定」を実行してください。");
             return;
         }
 
-        const btnRefine = document.getElementById('btnRefine');
-        btnRefine.innerText = "⏳ 抽出中...";
-        btnRefine.disabled = true;
+        const btn = document.getElementById('btnFloodRefine');
+        btn.innerText = "⏳ 低地抽出中...";
+        btn.disabled = true;
 
         try {
             const mapSize = map.getSize();
             const w = Math.round(mapSize.x);
             const h = Math.round(mapSize.y);
+            const totalPx = w * h;
 
-            const isHighSens = getSelectedSensitivity() === 'high';
-
-            const minRedArea = isHighSens ? 95 : 55;
-            const minBlueArea = isHighSens ? 75 : 45;
-            const pixelRedSlopeMin = isHighSens ? 10.5 : 8.5;
-            const clusterRedSlopeMin = isHighSens ? 13.0 : 11.0;
-            const clusterBlueSlopeMin = isHighSens ? 12.0 : 10.0;
-
-            const [rawFloodCanvas, screenSlope] = await Promise.all([
+            const [rawFloodCanvas, terrain] = await Promise.all([
                 captureFloodCanvas(w, h),
-                buildSlopeMapFromGSI(w, h)
+                buildTerrainMapsFromGSI(w, h)
             ]);
 
-            const res = filterFlatlandAndSpeckleNoise(
-                rawFloodCanvas, screenSlope,
-                minRedArea, minBlueArea,
-                pixelRedSlopeMin, clusterRedSlopeMin, clusterBlueSlopeMin
-            );
-            const refinedCanvas = renderClustersToCanvas(res.survivingClusters, w, h);
+            const { grid } = classifyPixels(rawFloodCanvas);
+            const { screenEle, screenSlope } = terrain;
 
+            // 1. シーン内の「もとからの水域(青)」の標高をサンプリングし、基準水位(下位30%点)を自動推定
+            const waterEles = [];
+            for (let i = 0; i < totalPx; i += 2) {
+                if (grid[i] === 2) {
+                    const e = screenEle[i];
+                    if (!isNaN(e) && e > -5 && e < 2000) waterEles.push(e);
+                }
+            }
+            let baseWaterLevel = 0;
+            if (waterEles.length >= 30) {
+                waterEles.sort((a, b) => a - b);
+                baseWaterLevel = waterEles[Math.floor(waterEles.length * 0.30)];
+            } else {
+                // 水域が少ない場合は画面全体の低地(下位15%点)を基準に採用
+                const allEles = [];
+                for (let i = 0; i < totalPx; i += 8) {
+                    const e = screenEle[i];
+                    if (!isNaN(e) && e > -5) allEles.push(e);
+                }
+                if (allEles.length > 0) {
+                    allEles.sort((a, b) => a - b);
+                    baseWaterLevel = allEles[Math.floor(allEles.length * 0.15)];
+                }
+            }
+
+            // 浸水し得る上限標高（基準水位 + 12m。note記事の「標高15m以上の台地を除外」の自動適応版）
+            const maxFloodEle = baseWaterLevel + 12.0;
+
+            // 2. 高台・台地・急斜面の赤/オレンジを事前カット
+            const filteredGrid = new Uint8Array(totalPx);
+            for (let i = 0; i < totalPx; i++) {
+                const t = grid[i];
+                if (t === 0) continue;
+                const ele = screenEle[i];
+                const slope = screenSlope[i];
+                if (t === 2) {
+                    // 青（常時水域）は急斜面(10度以上)の山肌シャドウのみカット
+                    if (slope < 10.0) filteredGrid[i] = 2;
+                } else {
+                    // 赤・オレンジ（浸水候補）は基準水位+12m以下かつ傾斜5.5度以下の低地のみ残す
+                    const isLowland = isNaN(ele) ? true : (ele <= maxFloodEle);
+                    if (isLowland && slope < 5.5) filteredGrid[i] = t;
+                }
+            }
+
+            // 3. 3x3近傍密度フィルタで砂嵐（孤立点・1pxの点々）を消去
+            // 赤(1)とオレンジ(3)は互いに隣接していれば「浸水仲間」としてカウントし、干拓地の縁が消えにくくする
+            const cleanedGrid = new Uint8Array(totalPx);
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const i = y * w + x;
+                    const t = filteredGrid[i];
+                    if (t === 0) continue;
+                    let cnt = 0;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        const row = (y + dy) * w + x;
+                        for (let dx = -1; dx <= 1; dx++) {
+                            const nt = filteredGrid[row + dx];
+                            if (t === 2) {
+                                if (nt === 2) cnt++;
+                            } else {
+                                if (nt === 1 || nt === 3) cnt++;
+                            }
+                        }
+                    }
+                    if (cnt >= 4) cleanedGrid[i] = t;
+                }
+            }
+
+            // 4. 連結成分ラベリング（面積・平均標高チェック）
+            const visited = new Uint8Array(totalPx);
+            const queue = new Int32Array(totalPx);
+            const survivingClusters = [];
+            let removedPlateauCount = 0;
+            let removedSpeckleCount = 0;
+            let survivedRedCount = 0;
+            let survivedOrangeCount = 0;
+
+            const sens = getSelectedSensitivity();
+            const minRedArea = sens === 'high' ? 35 : (sens === 'mid' ? 24 : 16);
+            const minOrangeArea = sens === 'high' ? 50 : (sens === 'mid' ? 35 : 22);
+            const minBlueArea = 18;
+
+            for (let i = 0; i < totalPx; i++) {
+                const t = cleanedGrid[i];
+                if (t === 0 || visited[i]) continue;
+
+                let head = 0, tail = 0;
+                queue[tail++] = i;
+                visited[i] = 1;
+
+                const pixels = [];
+                let eleSum = 0, eleCnt = 0;
+
+                while (head < tail) {
+                    const curr = queue[head++];
+                    pixels.push(curr);
+                    const e = screenEle[curr];
+                    if (!isNaN(e)) { eleSum += e; eleCnt++; }
+
+                    const cx = curr % w;
+                    const neighbors = [curr - 1, curr + 1, curr - w, curr + w];
+                    for (let n = 0; n < 4; n++) {
+                        const ni = neighbors[n];
+                        if (ni >= 0 && ni < totalPx && !visited[ni] && cleanedGrid[ni] === t) {
+                            const nx = ni % w;
+                            if (Math.abs(nx - cx) <= 1) {
+                                visited[ni] = 1;
+                                queue[tail++] = ni;
+                            }
+                        }
+                    }
+                }
+
+                const area = pixels.length;
+                const avgEle = eleCnt > 0 ? (eleSum / eleCnt) : baseWaterLevel;
+
+                if (t === 2) {
+                    if (area < minBlueArea) { removedSpeckleCount++; continue; }
+                } else if (t === 1) {
+                    if (avgEle > baseWaterLevel + 10.0) { removedPlateauCount++; continue; }
+                    if (area < minRedArea) { removedSpeckleCount++; continue; }
+                    survivedRedCount++;
+                } else if (t === 3) {
+                    // VHの浅い浸水は基準水位+7.5m以下の極低地でまとまった塊だけを残す
+                    if (avgEle > baseWaterLevel + 7.5) { removedPlateauCount++; continue; }
+                    if (area < minOrangeArea) { removedSpeckleCount++; continue; }
+                    survivedOrangeCount++;
+                }
+
+                survivingClusters.push({ type: t, pixels });
+            }
+
+            const refinedCanvas = renderTypedClustersToCanvas(survivingClusters, w, h);
             const refinedDataUrl = refinedCanvas.toDataURL('image/png');
             if (refinedOverlay) map.removeLayer(refinedOverlay);
             refinedOverlay = L.imageOverlay(refinedDataUrl, map.getBounds(), { zIndex: 12, interactive: false }).addTo(map);
             
-            if (floodLayer && map.hasLayer(floodLayer)) {
-                map.removeLayer(floodLayer);
-            }
+            if (floodLayer && map.hasLayer(floodLayer)) map.removeLayer(floodLayer);
             isShowingRefined = true;
 
-            const totalRemoved = res.removedFlatlandCount + res.removedSpeckleCount;
+            const panel = document.getElementById('aiRefinePanel');
+            panel.style.borderColor = '#007bff';
+            document.getElementById('refineHeaderTitle').style.color = '#0056b3';
+            document.getElementById('refineTitleText').innerText = '💧 低地・浸水リファイン結果';
             document.getElementById('refineStatsBox').innerHTML = `
-                🧹 除去したノイズ塊: 計 ${totalRemoved.toLocaleString()} 箇所<br>
-                <span style="font-weight:normal; font-size:11px; color:#555;">（平地・緩斜面等: ${res.removedFlatlandCount.toLocaleString()} ／ 小塊ノイズ: ${res.removedSpeckleCount.toLocaleString()}）</span>
-                <hr style="border:none; border-top:1px dashed #e0c0a0; margin:6px 0;">
-                ⛰️ 抽出された山地・谷部シグナル:<br>
-                <span style="color:#d32f2f;">■ 赤（崩壊・湛水候補）: ${res.survivedRedCount.toLocaleString()} 箇所</span><br>
-                <span style="color:#0056b3;">■ 青（渓流・既存水域）: ${res.survivedBlueCount.toLocaleString()} 箇所</span>
+                📏 推定基準水位（川・沼）: 標高 <strong>${baseWaterLevel.toFixed(1)} m</strong><br>
+                <span style="font-weight:normal; font-size:11px; color:#555;">（標高 ${(baseWaterLevel + 10.0).toFixed(1)}m 以上の台地・急斜面と砂嵐を除去）</span>
+                <hr style="border:none; border-top:1px dashed #b8d4f4; margin:6px 0;">
+                🧹 除去したノイズ塊: 計 ${(removedPlateauCount + removedSpeckleCount).toLocaleString()} 箇所<br>
+                <span style="color:#d32f2f;">■ 赤（確実な水面化）: ${survivedRedCount.toLocaleString()} 箇所</span><br>
+                <span style="color:#d35400;">■ 橙（VH浅い冠水候補）: ${survivedOrangeCount.toLocaleString()} 箇所</span>
             `;
-            document.getElementById('aiRefinePanel').style.display = 'block';
+            panel.style.display = 'block';
 
             const btnReset = document.getElementById('btnResetRefine');
             btnReset.style.display = 'inline-block';
@@ -1053,9 +1157,162 @@ function evaluatePixel(samples, scenes) {
 
         } catch (error) {
             console.error(error);
-            alert("リファイン処理中にエラーが発生しました。\n詳細: " + error.message);
+            alert("浸水リファイン処理中にエラーが発生しました。\n詳細: " + error.message);
         } finally {
-            btnRefine.innerText = "✨ 山地用リファイン";
+            btn.innerText = "💧 浸水リファイン";
+            updateRefineButtonState();
+        }
+    }
+
+    // ==========================================
+    // 既存の ⛰️ 山地リファイン（平地・緩斜面カット ＋ 小塊カット）
+    // ==========================================
+    async function refineForMountain() {
+        if (!floodLayer || !hasLoadedFloodTiles || lastDisplayMode !== 'flood') {
+            alert("先に表示「浸水判定」で「🌊 判定」を実行してください。");
+            return;
+        }
+        if (getSelectedSensitivity() === 'low') return;
+
+        const btnRefine = document.getElementById('btnRefine');
+        btnRefine.innerText = "⏳ 山地抽出中...";
+        btnRefine.disabled = true;
+
+        try {
+            const mapSize = map.getSize();
+            const w = Math.round(mapSize.x);
+            const h = Math.round(mapSize.y);
+            const totalPx = w * h;
+
+            const isHighSens = getSelectedSensitivity() === 'high';
+            const minRedArea = isHighSens ? 95 : 55;
+            const minBlueArea = isHighSens ? 75 : 45;
+            const pixelRedSlopeMin = isHighSens ? 10.5 : 8.5;
+            const clusterRedSlopeMin = isHighSens ? 13.0 : 11.0;
+            const clusterBlueSlopeMin = isHighSens ? 12.0 : 10.0;
+
+            const [rawFloodCanvas, terrain] = await Promise.all([
+                captureFloodCanvas(w, h),
+                buildTerrainMapsFromGSI(w, h)
+            ]);
+
+            const { grid } = classifyPixels(rawFloodCanvas);
+            const { screenSlope } = terrain;
+
+            const typeGrid = new Uint8Array(totalPx);
+            for (let i = 0; i < totalPx; i++) {
+                const t = grid[i];
+                if (t === 0) continue;
+                const slope = screenSlope[i];
+                if (t === 1 || t === 3) {
+                    if (slope >= pixelRedSlopeMin) typeGrid[i] = 1;
+                } else if (t === 2) {
+                    typeGrid[i] = 2;
+                }
+            }
+
+            const cleanedGrid = new Uint8Array(totalPx);
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const i = y * w + x;
+                    const t = typeGrid[i];
+                    if (t === 0) continue;
+                    let sameCount = 0;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        const rowOffset = (y + dy) * w + x;
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (typeGrid[rowOffset + dx] === t) sameCount++;
+                        }
+                    }
+                    if (sameCount >= 5) cleanedGrid[i] = t;
+                }
+            }
+
+            const visited = new Uint8Array(totalPx);
+            const queue = new Int32Array(totalPx);
+            const survivingClusters = [];
+            let removedSpeckleCount = 0;
+            let removedFlatlandCount = 0;
+            let survivedRedCount = 0;
+            let survivedBlueCount = 0;
+
+            for (let i = 0; i < totalPx; i++) {
+                const t = cleanedGrid[i];
+                if (t === 0 || visited[i]) continue;
+
+                let head = 0, tail = 0;
+                queue[tail++] = i;
+                visited[i] = 1;
+
+                const pixels = [];
+                let slopeSum = 0;
+
+                while (head < tail) {
+                    const curr = queue[head++];
+                    pixels.push(curr);
+                    slopeSum += screenSlope[curr];
+
+                    const cx = curr % w;
+                    const neighbors = [curr - 1, curr + 1, curr - w, curr + w];
+                    for (let n = 0; n < 4; n++) {
+                        const ni = neighbors[n];
+                        if (ni >= 0 && ni < totalPx && !visited[ni] && cleanedGrid[ni] === t) {
+                            const nx = ni % w;
+                            if (Math.abs(nx - cx) <= 1) {
+                                visited[ni] = 1;
+                                queue[tail++] = ni;
+                            }
+                        }
+                    }
+                }
+
+                const area = pixels.length;
+                const avgSlope = slopeSum / area;
+
+                if (t === 1) {
+                    if (avgSlope < clusterRedSlopeMin) { removedFlatlandCount++; continue; }
+                    if (area < minRedArea) { removedSpeckleCount++; continue; }
+                    survivedRedCount++;
+                } else if (t === 2) {
+                    if (avgSlope < clusterBlueSlopeMin && area < 450) { removedFlatlandCount++; continue; }
+                    if (area < minBlueArea) { removedSpeckleCount++; continue; }
+                    survivedBlueCount++;
+                }
+                survivingClusters.push({ type: t, pixels });
+            }
+
+            const refinedCanvas = renderTypedClustersToCanvas(survivingClusters, w, h);
+            const refinedDataUrl = refinedCanvas.toDataURL('image/png');
+            if (refinedOverlay) map.removeLayer(refinedOverlay);
+            refinedOverlay = L.imageOverlay(refinedDataUrl, map.getBounds(), { zIndex: 12, interactive: false }).addTo(map);
+            
+            if (floodLayer && map.hasLayer(floodLayer)) map.removeLayer(floodLayer);
+            isShowingRefined = true;
+
+            const panel = document.getElementById('aiRefinePanel');
+            panel.style.borderColor = '#e67e22';
+            document.getElementById('refineHeaderTitle').style.color = '#d35400';
+            document.getElementById('refineTitleText').innerText = '⛰️ 山地・谷部リファイン結果';
+            const totalRemoved = removedFlatlandCount + removedSpeckleCount;
+            document.getElementById('refineStatsBox').innerHTML = `
+                🧹 除去したノイズ塊: 計 ${totalRemoved.toLocaleString()} 箇所<br>
+                <span style="font-weight:normal; font-size:11px; color:#555;">（平地・緩斜面等: ${removedFlatlandCount.toLocaleString()} ／ 小塊ノイズ: ${removedSpeckleCount.toLocaleString()}）</span>
+                <hr style="border:none; border-top:1px dashed #e0c0a0; margin:6px 0;">
+                ⛰️ 抽出された山地・谷部シグナル:<br>
+                <span style="color:#d32f2f;">■ 赤（崩壊・湛水候補）: ${survivedRedCount.toLocaleString()} 箇所</span><br>
+                <span style="color:#0056b3;">■ 青（渓流・既存水域）: ${survivedBlueCount.toLocaleString()} 箇所</span>
+            `;
+            panel.style.display = 'block';
+
+            const btnReset = document.getElementById('btnResetRefine');
+            btnReset.style.display = 'inline-block';
+            btnReset.innerText = "↩️ 元に戻す";
+
+        } catch (error) {
+            console.error(error);
+            alert("山地リファイン処理中にエラーが発生しました。\n詳細: " + error.message);
+        } finally {
+            btnRefine.innerText = "⛰️ 山地リファイン";
             updateRefineButtonState();
         }
     }
@@ -1076,7 +1333,6 @@ function evaluatePixel(samples, scenes) {
         }
     }
 
-    // ★v3.0: 最新シーンと、比較ペアとなる同一軌道（12/24/36日前）の日時も合わせて表示
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
@@ -1085,7 +1341,6 @@ function evaluatePixel(samples, scenes) {
         const startStr = toIsoSec(timeRangeStart);
         const endStr = toIsoSec(targetEndDate);
         const center = map.getCenter();
-        // 画面中心付近の小さな範囲で検索し、画面端の別軌道シーンが混ざるのを防ぐ
         const eps = 0.005;
         const centerBbox = [center.lng - eps, center.lat - eps, center.lng + eps, center.lat + eps];
         
@@ -1107,9 +1362,10 @@ function evaluatePixel(samples, scenes) {
                 const latestFeat = data.features[0];
                 const latestDt = new Date(latestFeat.properties.datetime);
                 const latestMs = latestDt.getTime();
+                const orbitRaw = latestFeat.properties["sat:orbit_state"] || "";
+                const orbitLabel = orbitRaw === "ascending" ? " [上昇/夕]" : (orbitRaw === "descending" ? " [下降/朝]" : "");
                 const MS_DAY = 86400000;
 
-                // 12/24/36日前の同一軌道ペアを探索
                 let pastDt = null;
                 let bestCycleDays = 9999;
                 for (let i = 1; i < data.features.length; i++) {
@@ -1137,7 +1393,7 @@ function evaluatePixel(samples, scenes) {
 
                 const latestFmt = formatDateTimeJST(latestDt);
                 const pairInfo = pastDt ? ` (比較: ${formatShortDateTimeJST(pastDt)})` : "";
-                document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測: ${latestFmt}${pairInfo}`;
+                document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測: ${latestFmt}${orbitLabel}${pairInfo}`;
                 fetchRainData(center.lat, center.lng, latestDt);
             } else {
                 document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: データなし`;
