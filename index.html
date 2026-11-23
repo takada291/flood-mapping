@@ -39,7 +39,7 @@
             flex-shrink: 0;
         }
 
-        /* ★v3.4: スマホ・狭画面向けUI折りたたみモード */
+        /* スマホ・狭画面向けUI折りたたみモード */
         body.ui-collapsed #controls,
         body.ui-collapsed #nasa-toolbar {
             display: none !important;
@@ -297,13 +297,13 @@
             display: none;
             font-weight: normal;
             line-height: 1.5;
-            max-height: 150px;
+            max-height: 170px;
             overflow-y: auto;
         }
         .obs-chip {
             display: inline-block;
             margin: 2px 3px 2px 0;
-            padding: 2px 7px;
+            padding: 3px 8px;
             background: #e7f0ff;
             color: #0b3d91;
             border: 1px solid #8fb3ea;
@@ -312,7 +312,7 @@
             font-weight: bold;
             cursor: pointer;
         }
-        .obs-chip:hover {
+        .obs-chip:hover, .obs-chip.selected {
             background: #0b3d91;
             color: #fff;
         }
@@ -430,11 +430,11 @@
 </head>
 <body>
 
-<!-- ★v3.4: 折りたたみ時に表示されるフローティング復帰ボタン -->
+<!-- 折りたたみ時に表示されるフローティング復帰ボタン -->
 <button id="btnShowUi" onclick="toggleUiCollapse()">⚙️ メニュー表示</button>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v3.4</span>
+    <span class="app-title">浸水地図 v3.5</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -519,7 +519,7 @@
     <button id="btnRefine" onclick="refineForMountain()" disabled title="平地・緩斜面を除外し、山地・谷部の変化シグナルを抽出します（感度「中」「高」で有効）">⛰️ 山地リファイン</button>
     <button id="btnResetRefine" onclick="toggleRefineView()">↩️ 元に戻す</button>
 
-    <button id="btnDualToggle" onclick="toggleDualScreen()" title="Sentinel-1とNASA SAR（NISAR/OPERA）を2画面で連動表示します">🛰️ 2画面(NASA)</button>
+    <button id="btnDualToggle" onclick="toggleDualScreen()" title="Sentinel-1とNASA NISAR(GCOV)を2画面で連動表示します">🛰️ 2画面(NASA)</button>
     <button id="btnHideUi" onclick="toggleUiCollapse()" title="操作バーを折りたたんで地図を広く表示します">▲ 隠す</button>
 </div>
 
@@ -546,35 +546,31 @@
         </div>
     </div>
 
-    <!-- 右ペイン: NASA SAR（2画面オプション時のみ表示） -->
+    <!-- 右ペイン: NASA NISAR GCOV（2画面オプション時のみ表示・プルダウン非表示でGCOV固定） -->
     <div id="nasa-pane">
         <div id="nasa-toolbar">
-            <span class="nasa-badge-title">🛰️ NASA</span>
+            <span class="nasa-badge-title">🛰️ NISAR(GCOV)</span>
             <button class="nasa-step-btn" onclick="stepNasaDate(-1)" title="1日前へ">◀</button>
             <input type="date" id="nasaDateInput" onchange="onNasaDateManualChange()" title="表示日（大雨後など）" style="padding: 2px 3px; font-size: 11.5px; font-weight: bold;">
             <button class="nasa-step-btn" onclick="stepNasaDate(1)" title="1日後へ">▶</button>
 
-            <!-- ★v3.4: 2時期差分用の比較前日 ＆ 差分強調ボタン -->
             <span style="font-size:11px; color:#555; font-weight:bold;">比較前:</span>
-            <input type="date" id="nasaCompareDateInput" title="2時期差分で比較する過去日（例: 12日前の観測日）" style="padding: 2px 3px; font-size: 11.5px;">
+            <input type="date" id="nasaCompareDateInput" title="2時期差分で比較する過去日" style="padding: 2px 3px; font-size: 11.5px;">
             <button id="btnNasaDiff" onclick="toggleNasaDiffMode()" title="表示日と比較前日の2枚の画像を比べ、暗くなった所（浸水・変化）を赤色で強調表示します">🔥 差分比較</button>
 
-            <select id="nasaLayerSelect" onchange="onNasaLayerChange()" style="max-width: 175px; font-size: 11px; padding: 3px 4px;">
-                <option value="">レイヤー取得中...</option>
-            </select>
             <label style="display:flex; align-items:center; gap:2px; font-weight:bold; color:#333; font-size:11px;">
                 <span>透過</span>
                 <input type="range" id="nasaOpacityRange" min="0.2" max="1.0" step="0.05" value="0.95" oninput="updateNasaOpacity()" style="width: 50px;">
             </label>
-            <button class="nasa-step-btn" id="btnNasaFindDates" onclick="searchNisarDates()" title="基準日の前後（前36日〜後10日）で現在地のNISAR観測日を検索します">🔍 観測日</button>
+            <button class="nasa-step-btn" id="btnNasaFindDates" onclick="searchNisarDates()" title="基準日の前後（前42日〜後10日）で実際に画像が表示できるNISAR観測日を検証・一覧表示します">🔍 観測日</button>
             <a id="nasaWorldviewLink" class="nasa-link-btn" href="https://worldview.earthdata.nasa.gov/" target="_blank" rel="noopener" title="現在の場所・日付をNASA Worldviewで開く">🌐 WV</a>
         </div>
         <div id="map-nasa">
-            <div id="nasa-pane-badge">🛰️ NASA NISAR / GIBS</div>
+            <div id="nasa-pane-badge">🛰️ NASA NISAR (GCOV)</div>
             <div class="crosshair"></div>
             <div id="nasaInfoPanel">
                 <div id="nasaDatesBox" class="info-box"></div>
-                <div id="nasaStatusBox" class="info-box">🛰️ NASA GIBS: 待機中</div>
+                <div id="nasaStatusBox" class="info-box">🛰️ NISAR(GCOV): 待機中</div>
             </div>
         </div>
     </div>
@@ -613,7 +609,6 @@
         return `${m}/${d} ${hh}:${mm}`;
     }
 
-    // ★v3.4: 日本時間の実時刻ベースで朝/夕/夜を判定（NISARとSentinel-1の軌道方向逆転を防止）
     function getJstTimeOfDayLabel(dateObj) {
         const jst = new Date(dateObj.getTime() + 9 * 60 * 60 * 1000);
         const h = jst.getUTCHours();
@@ -635,7 +630,6 @@
         nasaCompareInput.max = todayJst;
     }
 
-    // ★v3.4: スマホ向けUI折りたたみ切替
     function toggleUiCollapse() {
         document.body.classList.toggle('ui-collapsed');
         setTimeout(() => {
@@ -698,7 +692,6 @@
     legend.onAdd = function (map) {
         const div = L.DomUtil.create('div', 'info legend');
         L.DomEvent.disableClickPropagation(div);
-        // 画面が狭いスマホ等では凡例を初期状態で折りたたみ表示にする
         const isSmallScreen = window.innerWidth <= 900 || window.innerHeight <= 520;
         const initDisp = isSmallScreen ? 'none' : 'block';
         const initIcon = isSmallScreen ? '[+]' : '[-]';
@@ -741,7 +734,7 @@
     legend.addTo(map);
 
     // ==========================================
-    // ★v3.4: NASA SAR (GIBS) 2画面表示・前後観測日検索・2時期差分強調
+    // ★v3.5: NASA NISAR(GCOV)固定 ＆ 表示可能日の実タイル検証リストアップ
     // ==========================================
     let isDualMode = false;
     let mapNasa = null;
@@ -750,8 +743,8 @@
     let isNasaDiffMode = false;
     let isSyncingMaps = false;
     let gibsLayersLoaded = false;
-    let gibsLayerRegistry = [];
-    let lastFoundNisarDates = [];
+    let selectedNasaLayerMeta = null;
+    let verifiedNisarDates = [];
 
     function initNasaMapIfNeeded() {
         if (mapNasa) return;
@@ -820,7 +813,7 @@
             }, 80);
 
             if (!gibsLayersLoaded) {
-                loadNasaGibsSarLayers();
+                loadNasaGcovLayer();
             } else if (!isNasaDiffMode) {
                 updateNasaLayer();
             }
@@ -859,11 +852,6 @@
         updateNasaLayer();
     }
 
-    function onNasaLayerChange() {
-        clearNasaDiffMode();
-        updateNasaLayer();
-    }
-
     function stepNasaDate(deltaDays) {
         const nasaDateEl = document.getElementById('nasaDateInput');
         if (!nasaDateEl.value) return;
@@ -895,7 +883,7 @@
             btnDiff.innerText = "🔥 差分比較";
         }
         const badge = document.getElementById('nasa-pane-badge');
-        if (badge) badge.innerText = "🛰️ NASA NISAR / GIBS (単日表示)";
+        if (badge) badge.innerText = "🛰️ NASA NISAR (GCOV)";
     }
 
     function updateNasaWorldviewLink() {
@@ -904,16 +892,15 @@
         const dateStr = document.getElementById('nasaDateInput').value || formatDateJST(new Date());
         const b = map.getBounds();
         const vParam = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
-        const selectedId = document.getElementById('nasaLayerSelect').value;
+        const selectedId = selectedNasaLayerMeta ? selectedNasaLayerMeta.id : "";
         const lParam = selectedId ? `Reference_Labels_15m,Reference_Features_15m,${selectedId}` : `Reference_Labels_15m,Reference_Features_15m`;
         link.href = `https://worldview.earthdata.nasa.gov/?v=${vParam}&t=${dateStr}-T00%3A00%3A00Z&l=${encodeURIComponent(lParam)}`;
     }
 
-    async function loadNasaGibsSarLayers() {
+    // ★v3.5: NASA GIBS公式WMTSカタログからNISARのGCOVレイヤー（最上位1件）を自動固定取得
+    async function loadNasaGcovLayer() {
         const statusEl = document.getElementById('nasaStatusBox');
-        const selectEl = document.getElementById('nasaLayerSelect');
-        statusEl.innerText = "🛰️ NASA GIBS: NISAR/SARレイヤーを検索中...";
-        selectEl.innerHTML = `<option value="">検索中...</option>`;
+        statusEl.innerText = "🛰️ NISAR(GCOV): レイヤー情報を取得中...";
 
         try {
             const resp = await fetch('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/1.0.0/WMTSCapabilities.xml');
@@ -928,10 +915,7 @@
                 if (!idMatch) continue;
                 const id = idMatch[1].trim();
                 const upperId = id.toUpperCase();
-
-                const isNisar = upperId.includes('NISAR');
-                const isOperaSar = upperId.includes('OPERA') && (upperId.includes('DSWX') || upperId.includes('RTC') || upperId.includes('S1') || upperId.includes('DIST'));
-                if (!isNisar && !isOperaSar) continue;
+                if (!upperId.includes('NISAR')) continue;
 
                 const titleMatch = block.match(/<ows:Title>([^<]+)<\/ows:Title>/);
                 const title = titleMatch ? titleMatch[1].trim() : id;
@@ -949,55 +933,31 @@
                     template = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${id}/default/{Time}/${tms}/{TileMatrix}/{TileRow}/{TileCol}.${ext}`;
                 }
 
-                let priority = 50;
-                if (isNisar) {
-                    priority = 10;
-                    if (upperId.includes('RGB') || upperId.includes('FALSE') || upperId.includes('GCOV') || upperId.includes('POLARIMETRIC')) priority = 1;
-                    else if (upperId.includes('HH')) priority = 5;
-                } else if (upperId.includes('DSWX_S1') || upperId.includes('DSWX-S1')) {
-                    priority = 20;
-                } else if (upperId.includes('RTC')) {
-                    priority = 25;
+                // GCOV（Geocoded Polarimetric Covariance）単日レイヤーを最優先
+                let priority = 20;
+                if (upperId.includes('POLARIMETRIC_COVARIANCE') || upperId.includes('GCOV')) {
+                    priority = 1;
+                } else if (upperId.includes('POLARIMETRIC') || upperId.includes('RGB') || upperId.includes('FALSE')) {
+                    priority = 3;
+                } else if (upperId.includes('HH')) {
+                    priority = 8;
                 }
+                if (upperId.includes('12DAY') || upperId.includes('MONTHLY')) priority += 10;
 
-                found.push({ id, title, tms, maxNativeZoom, template, isNisar, priority });
+                found.push({ id, title, tms, maxNativeZoom, template, priority });
             }
 
             found.sort((a, b) => (a.priority - b.priority) || a.id.localeCompare(b.id));
-            gibsLayerRegistry = found;
-
-            selectEl.innerHTML = "";
             if (found.length > 0) {
-                found.forEach(item => {
-                    const optEl = document.createElement('option');
-                    optEl.value = item.id;
-                    const prefix = item.isNisar ? "★NISAR: " : "OPERA: ";
-                    const shortName = item.id.replace(/^NISAR_/i, '').replace(/^OPERA_L3_/i, '');
-                    optEl.text = `${prefix}${shortName} (Z${item.maxNativeZoom})`;
-                    optEl.title = item.title;
-                    selectEl.add(optEl);
-                });
+                selectedNasaLayerMeta = found[0];
                 gibsLayersLoaded = true;
                 updateNasaLayer();
             } else {
-                throw new Error("GIBSカタログ内にNISAR/OPERAレイヤーが見つかりませんでした");
+                throw new Error("GIBSカタログ内にNISARレイヤーが見つかりませんでした");
             }
         } catch (err) {
             console.warn("NASA GIBS Capabilities取得エラー:", err);
-            gibsLayerRegistry = [
-                {
-                    id: "OPERA_L3_DSWX-S1_PROVISIONAL_V1",
-                    title: "OPERA Surface Water (Sentinel-1)",
-                    tms: "GoogleMapsCompatible_Level13",
-                    maxNativeZoom: 13,
-                    template: "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/OPERA_L3_DSWX-S1_PROVISIONAL_V1/default/{Time}/GoogleMapsCompatible_Level13/{TileMatrix}/{TileRow}/{TileCol}.png",
-                    isNisar: false
-                }
-            ];
-            selectEl.innerHTML = `<option value="OPERA_L3_DSWX-S1_PROVISIONAL_V1">OPERA: DSWX-S1 (フォールバック)</option>`;
-            gibsLayersLoaded = true;
-            statusEl.innerText = `⚠️ カタログ自動取得失敗 (${err.message})`;
-            updateNasaLayer();
+            statusEl.innerText = `⚠️ NISARレイヤー取得失敗 (${err.message})`;
         }
     }
 
@@ -1012,7 +972,6 @@
 
     function updateNasaLayer() {
         if (!mapNasa) return;
-        const selectedId = document.getElementById('nasaLayerSelect').value;
         const dateStr = document.getElementById('nasaDateInput').value || formatDateJST(new Date());
         const opacity = parseFloat(document.getElementById('nasaOpacityRange').value);
         const statusEl = document.getElementById('nasaStatusBox');
@@ -1022,9 +981,9 @@
             nasaTileLayer = null;
         }
 
-        const meta = gibsLayerRegistry.find(l => l.id === selectedId);
+        const meta = selectedNasaLayerMeta;
         if (!meta) {
-            statusEl.innerText = "🛰️ NASA GIBS: レイヤー未選択";
+            statusEl.innerText = "🛰️ NISAR(GCOV): 読込準備中";
             return;
         }
 
@@ -1047,24 +1006,24 @@
         nasaTileLayer.on('tileload', () => {
             loadedTiles++;
             if (!isNasaDiffMode) {
-                statusEl.innerText = `🛰️ NASA [${dateStr}] ${meta.id}`;
+                statusEl.innerText = `🛰️ NISAR(GCOV) [${dateStr}] 表示中`;
             }
         });
         nasaTileLayer.on('tileerror', () => {
             if (loadedTiles === 0 && !isNasaDiffMode) {
-                statusEl.innerText = `🛰️ NASA [${dateStr}] タイルなし（◀▶または🔍観測日で切替）`;
+                statusEl.innerText = `🛰️ NISAR [${dateStr}] タイルなし（🔍観測日で表示可能日を検索）`;
             }
         });
 
         nasaTileLayer.addTo(mapNasa);
         if (!isNasaDiffMode) {
-            statusEl.innerText = `🛰️ NASA [${dateStr}] タイル読込中...`;
-            document.getElementById('nasa-pane-badge').innerText = `🛰️ NASA (${dateStr} 単日)`;
+            statusEl.innerText = `🛰️ NISAR(GCOV) [${dateStr}] 読込中...`;
+            document.getElementById('nasa-pane-badge').innerText = `🛰️ NISAR GCOV (${dateStr})`;
         }
         updateNasaWorldviewLink();
     }
 
-    // ★v3.4 新機能: NASA GIBS 2時期差分強調（ブラウザCanvasで比較前日→表示日の暗化箇所を赤抽出）
+    // NASA GIBS 2時期差分強調（ブラウザCanvasで比較前日→表示日の暗化箇所を赤抽出）
     async function toggleNasaDiffMode() {
         if (isNasaDiffMode) {
             clearNasaDiffMode();
@@ -1076,10 +1035,9 @@
 
     async function runNasaDiffComparison() {
         if (!mapNasa) return;
-        const selectedId = document.getElementById('nasaLayerSelect').value;
-        const meta = gibsLayerRegistry.find(l => l.id === selectedId);
+        const meta = selectedNasaLayerMeta;
         if (!meta) {
-            alert("NASAレイヤーが読み込まれていません。");
+            alert("NASA NISAR(GCOV)レイヤーが読み込まれていません。");
             return;
         }
 
@@ -1098,10 +1056,9 @@
         const statusEl = document.getElementById('nasaStatusBox');
         btnDiff.disabled = true;
         btnDiff.innerText = "⏳ 差分計算中...";
-        statusEl.innerText = `🔥 NASA 2時期差分計算中 (${beforeDate} → ${afterDate})...`;
+        statusEl.innerText = `🔥 NISAR 2時期差分計算中 (${beforeDate} → ${afterDate})...`;
 
         try {
-            // 画面範囲のタイル座標を算出（負荷防止のため最大64タイル以内に収まるズームを選択）
             let z = Math.min(Math.max(Math.round(mapNasa.getZoom()), 7), meta.maxNativeZoom);
             const bounds = mapNasa.getBounds();
             let topLeft, bottomRight, minX, maxX, minY, maxY;
@@ -1160,7 +1117,7 @@
                 const missing = beforeRes.okCount === 0 && afterRes.okCount === 0
                     ? `両日（${beforeDate}・${afterDate}）`
                     : (beforeRes.okCount === 0 ? `比較前日（${beforeDate}）` : `表示日（${afterDate}）`);
-                alert(`${missing}のNASA観測タイルが見つかりませんでした。\n「🔍 観測日」から実際に観測がある2つの日付を選んでお試しください。`);
+                alert(`${missing}のNISAR観測タイルが見つかりませんでした。\n「🔍 観測日」から実際に表示可能な2つの日付を選んでお試しください。`);
                 statusEl.innerText = `⚠️ ${missing}のタイルなし`;
                 return;
             }
@@ -1169,7 +1126,6 @@
             const aData = afterRes.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cw, ch).data;
             const totalPx = cw * ch;
 
-            // 感度に応じた暗化判定閾値（GIBS NISAR偏波画像は陸地が明色・水面が暗色）
             const sens = getSelectedSensitivity();
             let minDrop, maxRatio, maxAfterLuma, minBeforeLuma;
             if (sens === 'low') {
@@ -1180,7 +1136,6 @@
                 minDrop = 26; maxRatio = 0.68; maxAfterLuma = 105; minBeforeLuma = 38;
             }
 
-            // 0: 無, 1: 暗化(赤), 2: もとからの水面(青)
             const mask = new Uint8Array(totalPx);
             for (let i = 0; i < totalPx; i++) {
                 const idx = i * 4;
@@ -1191,19 +1146,16 @@
                 const r1 = bData[idx], g1 = bData[idx + 1], bl1 = bData[idx + 2];
                 const r2 = aData[idx], g2 = aData[idx + 1], bl2 = aData[idx + 2];
 
-                // 完全な黒欠損（スワス境界の0,0,0）を除外
                 if ((r1 + g1 + bl1) < 9 || (r2 + g2 + bl2) < 6) continue;
 
                 const luma1 = 0.299 * r1 + 0.587 * g1 + 0.114 * bl1;
                 const luma2 = 0.299 * r2 + 0.587 * g2 + 0.114 * bl2;
 
-                // どちらも暗い（もともと水面）
                 if (luma1 < 36 && luma2 < 36) {
                     mask[i] = 2;
                     continue;
                 }
 
-                // 前回明るく、今回明確に暗くなった（浸水・水面化・変化）
                 const drop = luma1 - luma2;
                 const ratio = luma2 / Math.max(luma1, 1);
                 if (luma1 >= minBeforeLuma && drop >= minDrop && ratio <= maxRatio && luma2 <= maxAfterLuma) {
@@ -1211,7 +1163,6 @@
                 }
             }
 
-            // 3x3近傍フィルタで1pxの孤立スペックルを除去し、視認性を高める
             const outCanvas = document.createElement('canvas');
             outCanvas.width = cw;
             outCanvas.height = ch;
@@ -1245,7 +1196,6 @@
             }
             outCtx.putImageData(outImg, 0, 0);
 
-            // タイルの正確な地理的範囲を計算してオーバーレイ配置
             const nw = mapNasa.unproject([minX * 256, minY * 256], z);
             const se = mapNasa.unproject([(maxX + 1) * 256, (maxY + 1) * 256], z);
             const overlayBounds = L.latLngBounds(nw, se);
@@ -1267,8 +1217,8 @@
             isNasaDiffMode = true;
             btnDiff.classList.add('active');
             btnDiff.innerText = "↩️ 単日へ";
-            document.getElementById('nasa-pane-badge').innerText = `🔥 NASA 2時期差分 (${beforeDate}→${afterDate})`;
-            statusEl.innerText = `🔥 NASA差分 [${beforeDate} → ${afterDate}] 赤:暗化(${redPxCount.toLocaleString()}px) / 青:水域`;
+            document.getElementById('nasa-pane-badge').innerText = `🔥 NISAR 差分 (${beforeDate}→${afterDate})`;
+            statusEl.innerText = `🔥 NISAR差分 [${beforeDate} → ${afterDate}] 赤:暗化(${redPxCount.toLocaleString()}px)`;
 
         } catch (err) {
             console.error(err);
@@ -1280,93 +1230,196 @@
         }
     }
 
-    // ★v3.4: ASF DAAC Search APIで「基準日の前36日〜後10日」のNISAR観測日を検索 ＆ 実時刻ベースの朝夕表示
+    // ★v3.5: 画面中心のGIBS実タイルを検証し「本当に映像が表示される日付」だけを判定
+    function checkGibsTileHasData(meta, dateStr, z, tx, ty, localX, localY) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            const timer = setTimeout(() => resolve(false), 6000);
+
+            img.onload = () => {
+                clearTimeout(timer);
+                try {
+                    const cv = document.createElement('canvas');
+                    cv.width = 256;
+                    cv.height = 256;
+                    const ctx = cv.getContext('2d', { willReadFrequently: true });
+                    ctx.drawImage(img, 0, 0, 256, 256);
+
+                    // 画面中心付近（半径28px＝56x56px範囲）に有効な非透明・非黒ピクセルが十分あるか確認
+                    const x0 = Math.max(0, localX - 28);
+                    const x1 = Math.min(255, localX + 28);
+                    const y0 = Math.max(0, localY - 28);
+                    const y1 = Math.min(255, localY + 28);
+                    const sw = x1 - x0 + 1;
+                    const sh = y1 - y0 + 1;
+                    const data = ctx.getImageData(x0, y0, sw, sh).data;
+
+                    let validPx = 0;
+                    let samplePx = 0;
+                    for (let i = 0; i < data.length; i += 8) {
+                        samplePx++;
+                        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+                        if (a > 100 && (r + g + b) >= 18) {
+                            validPx++;
+                        }
+                    }
+                    resolve(samplePx > 0 && (validPx / samplePx) >= 0.12);
+                } catch (e) {
+                    resolve(false);
+                }
+            };
+            img.onerror = () => {
+                clearTimeout(timer);
+                resolve(false);
+            };
+            img.src = buildGibsTileUrl(meta, dateStr, z, tx, ty);
+        });
+    }
+
+    // ★v3.5: 基準日の前42日〜後10日を実タイル検証し、確実に表示できるNISAR(GCOV)観測日を複数表示
     async function searchNisarDates() {
+        if (!selectedNasaLayerMeta) {
+            await loadNasaGcovLayer();
+            if (!selectedNasaLayerMeta) {
+                alert("NISAR(GCOV)レイヤーの初期化に失敗しました。");
+                return;
+            }
+        }
+
         const btn = document.getElementById('btnNasaFindDates');
         const box = document.getElementById('nasaDatesBox');
         const center = map.getCenter();
         const baseStr = document.getElementById('targetDateInput').value || formatDateJST(new Date());
         const todayStr = formatDateJST(new Date());
 
-        const startSearchStr = addDaysToDateStr(baseStr, -36);
+        const startSearchStr = addDaysToDateStr(baseStr, -42);
         let endSearchStr = addDaysToDateStr(baseStr, 10);
         if (endSearchStr > todayStr) endSearchStr = todayStr;
 
         btn.disabled = true;
         btn.innerText = "⏳";
         box.style.display = 'block';
-        box.innerHTML = `🛰️ ${startSearchStr}〜${endSearchStr} のNISAR観測日を検索中...`;
-
-        const queryAsf = async (paramName) => {
-            const url = `https://api.daac.asf.alaska.edu/services/search/param?${paramName}=NISAR&intersectsWith=${encodeURIComponent(`POINT(${center.lng.toFixed(5)} ${center.lat.toFixed(5)})`)}&start=${startSearchStr}T00:00:00Z&end=${endSearchStr}T23:59:59Z&maxResults=25&output=geojson`;
-            const res = await fetch(url);
-            if (!res.ok) return [];
-            const geojson = await res.json();
-            return geojson.features || [];
-        };
+        box.innerHTML = `🛰️ ${startSearchStr}〜${endSearchStr} の実表示可能なGCOV観測日を検証中...`;
 
         try {
-            let features = await queryAsf('dataset');
-            if (features.length === 0) {
-                features = await queryAsf('platform');
+            // 1. チェック対象の日付リストを作成（新しい順）
+            const candidateDates = [];
+            let cur = endSearchStr;
+            while (cur >= startSearchStr) {
+                candidateDates.push(cur);
+                cur = addDaysToDateStr(cur, -1);
             }
 
-            if (features.length === 0) {
-                box.innerHTML = `<div style="display:flex; justify-content:space-between;"><strong>NISAR観測日（${startSearchStr}〜${endSearchStr}）</strong><span style="cursor:pointer; color:#888; font-weight:bold;" onclick="document.getElementById('nasaDatesBox').style.display='none'">✕</span></div>この期間の公開シーンが見つかりませんでした。◀▶ボタンで日付を変更してみてください。`;
+            // 2. 裏側でASF DAAC（GCOV絞り込み）から正確な観測時刻・朝夕メタデータを並列取得
+            const asfPromise = (async () => {
+                const timeMap = new Map();
+                const fetchAsf = async (extraParam) => {
+                    const url = `https://api.daac.asf.alaska.edu/services/search/param?dataset=NISAR${extraParam}&intersectsWith=${encodeURIComponent(`POINT(${center.lng.toFixed(5)} ${center.lat.toFixed(5)})`)}&start=${startSearchStr}T00:00:00Z&end=${endSearchStr}T23:59:59Z&maxResults=100&output=geojson`;
+                    try {
+                        const r = await fetch(url);
+                        if (!r.ok) return [];
+                        const gj = await r.json();
+                        return gj.features || [];
+                    } catch (e) { return []; }
+                };
+                let feats = await fetchAsf('&processingLevel=GCOV');
+                if (feats.length === 0) feats = await fetchAsf('');
+                for (const f of feats) {
+                    const st = f.properties && (f.properties.startTime || f.properties.stopTime);
+                    if (!st) continue;
+                    const dt = new Date(st);
+                    const utcDate = dt.toISOString().split('T')[0];
+                    if (!timeMap.has(utcDate)) {
+                        timeMap.set(utcDate, {
+                            ms: dt.getTime(),
+                            jstLabel: formatShortDateTimeJST(dt),
+                            todLabel: getJstTimeOfDayLabel(dt)
+                        });
+                    }
+                }
+                return timeMap;
+            })();
+
+            // 3. 画面中心点のGIBSタイル座標を計算し、10並列バッチで実在タイルを高速検証
+            const meta = selectedNasaLayerMeta;
+            const checkZoom = Math.min(meta.maxNativeZoom, Math.max(8, Math.min(11, Math.round(mapNasa.getZoom()))));
+            const pt = mapNasa.project(center, checkZoom);
+            const tx = Math.floor(pt.x / 256);
+            const ty = Math.floor(pt.y / 256);
+            const localX = Math.floor(pt.x - tx * 256);
+            const localY = Math.floor(pt.y - ty * 256);
+
+            const validDates = [];
+            const batchSize = 10;
+            for (let i = 0; i < candidateDates.length; i += batchSize) {
+                const batch = candidateDates.slice(i, i + batchSize);
+                const results = await Promise.all(
+                    batch.map(dStr => checkGibsTileHasData(meta, dStr, checkZoom, tx, ty, localX, localY).then(ok => ok ? dStr : null))
+                );
+                results.forEach(d => { if (d) validDates.push(d); });
+                const doneCount = Math.min(i + batchSize, candidateDates.length);
+                box.innerHTML = `🛰️ 実表示可能なNISAR(GCOV)タイルを検証中... (${doneCount}/${candidateDates.length}日・発見: ${validDates.length}日)`;
+            }
+
+            const asfTimeMap = await asfPromise;
+
+            if (validDates.length === 0) {
+                box.innerHTML = `<div style="display:flex; justify-content:space-between;"><strong>NISAR(GCOV)観測日（${startSearchStr}〜${endSearchStr}）</strong><span style="cursor:pointer; color:#888; font-weight:bold;" onclick="document.getElementById('nasaDatesBox').style.display='none'">✕</span></div>この期間に表示可能なGIBSタイルが見つかりませんでした。基準日をずらして再検索してください。`;
+                verifiedNisarDates = [];
                 return;
             }
 
-            const seenDates = new Map();
-            for (const f of features) {
-                const startTime = f.properties && (f.properties.startTime || f.properties.stopTime);
-                if (!startTime) continue;
-                const dt = new Date(startTime);
-                const utcDate = dt.toISOString().split('T')[0];
-                if (!seenDates.has(utcDate)) {
-                    const todLabel = getJstTimeOfDayLabel(dt);
-                    seenDates.set(utcDate, {
-                        utcDate,
-                        ms: dt.getTime(),
-                        jstLabel: formatShortDateTimeJST(dt),
-                        todLabel
-                    });
-                }
-            }
+            // 検証済み日付リストを構築（ASF時刻があれば付与）
+            verifiedNisarDates = validDates.map(utcDate => {
+                const info = asfTimeMap.get(utcDate) || null;
+                return {
+                    utcDate,
+                    ms: info ? info.ms : new Date(`${utcDate}T12:00:00Z`).getTime(),
+                    jstLabel: info ? info.jstLabel : "",
+                    todLabel: info ? info.todLabel : ""
+                };
+            }).sort((a, b) => b.utcDate.localeCompare(a.utcDate));
 
-            const list = Array.from(seenDates.values()).sort((a, b) => b.ms - a.ms).slice(0, 8);
-            lastFoundNisarDates = list;
-
-            let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
-                <strong style="color:#0b3d91;">📅 NISAR観測日（前後検索・クリックで反映）</strong>
-                <span style="cursor:pointer; color:#888; font-weight:bold; padding:0 4px;" onclick="document.getElementById('nasaDatesBox').style.display='none'">✕</span>
-            </div>`;
-            list.forEach(item => {
-                html += `<span class="obs-chip" onclick="applyNasaDate('${item.utcDate}')">${item.utcDate} [${item.jstLabel}(${item.todLabel})]</span>`;
-            });
-            html += `<div style="font-size:10.5px; color:#666; margin-top:2px;">※日付を選ぶと自動で12日前(または直前観測日)が「比較前」に入ります</div>`;
-            box.innerHTML = html;
-
-            // 基準日に最も近い観測日を自動適用
+            // 基準日に最も近い表示可能日を自動選択
             const baseMs = new Date(`${baseStr}T12:00:00+09:00`).getTime();
-            let closest = list[0];
+            let closest = verifiedNisarDates[0];
             let bestDiff = Infinity;
-            for (const item of list) {
+            for (const item of verifiedNisarDates) {
                 const diff = Math.abs(item.ms - baseMs);
                 if (diff < bestDiff) {
                     bestDiff = diff;
                     closest = item;
                 }
             }
+
+            renderVerifiedNisarChips(closest ? closest.utcDate : verifiedNisarDates[0].utcDate);
             if (closest) {
                 applyNasaDate(closest.utcDate);
             }
         } catch (e) {
             console.error(e);
-            box.innerHTML = `⚠️ NISAR観測日の検索に失敗しました（${e.message}）。◀▶ボタンで日付を手動変更してください。`;
+            box.innerHTML = `⚠️ NISAR観測日の検索に失敗しました（${e.message}）。`;
         } finally {
             btn.disabled = false;
             btn.innerText = "🔍 観測日";
         }
+    }
+
+    function renderVerifiedNisarChips(activeDateStr) {
+        const box = document.getElementById('nasaDatesBox');
+        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <strong style="color:#0b3d91;">✅ 表示可能なNISAR(GCOV)観測日（${verifiedNisarDates.length}日）</strong>
+            <span style="cursor:pointer; color:#888; font-weight:bold; padding:0 4px;" onclick="document.getElementById('nasaDatesBox').style.display='none'">✕</span>
+        </div>`;
+        verifiedNisarDates.slice(0, 12).forEach(item => {
+            const selClass = (item.utcDate === activeDateStr) ? " selected" : "";
+            const label = item.jstLabel ? `${item.utcDate} [${item.jstLabel}(${item.todLabel})]` : item.utcDate;
+            html += `<span class="obs-chip${selClass}" onclick="applyNasaDate('${item.utcDate}')">${label}</span>`;
+        });
+        html += `<div style="font-size:10.5px; color:#666; margin-top:3px;">※実タイル検証済み。選択すると最適な過去観測日が自動で「比較前」に入ります</div>`;
+        box.innerHTML = html;
+        box.style.display = 'block';
     }
 
     function applyNasaDate(utcDateStr) {
@@ -1375,34 +1428,41 @@
         nasaDateEl.value = utcDateStr;
         nasaDateEl.dataset.userEdited = "1";
 
-        // 検索済みリストから同一時間帯（12日前優先）または直前の過去観測日を自動で比較前日にセット
-        const selectedItem = lastFoundNisarDates.find(d => d.utcDate === utcDateStr);
+        // 検証済みリストから最適な過去観測日（12日前同一時間帯 → 同一時間帯過去 → 直前の検証済み過去日）を自動セット
+        const selectedItem = verifiedNisarDates.find(d => d.utcDate === utcDateStr);
         let autoCompareDate = addDaysToDateStr(utcDateStr, -12);
-        if (selectedItem && lastFoundNisarDates.length > 1) {
+        if (selectedItem && verifiedNisarDates.length > 1) {
             const MS_DAY = 86400000;
-            // 1. 12日周期（10〜14日前）かつ同じ朝/夕を最優先
-            let match = lastFoundNisarDates.find(d => {
+            let match = verifiedNisarDates.find(d => {
                 const diffDays = (selectedItem.ms - d.ms) / MS_DAY;
-                return diffDays >= 10 && diffDays <= 14 && d.todLabel === selectedItem.todLabel;
+                return diffDays >= 10 && diffDays <= 14 && selectedItem.todLabel && d.todLabel === selectedItem.todLabel;
             });
-            // 2. なければ同じ朝/夕の直近過去日
             if (!match) {
-                match = lastFoundNisarDates.find(d => d.ms < selectedItem.ms && d.todLabel === selectedItem.todLabel);
+                match = verifiedNisarDates.find(d => {
+                    const diffDays = (selectedItem.ms - d.ms) / MS_DAY;
+                    return diffDays >= 10 && diffDays <= 14;
+                });
             }
-            // 3. それもなければ単純に直近の過去観測日
+            if (!match && selectedItem.todLabel) {
+                match = verifiedNisarDates.find(d => d.utcDate < selectedItem.utcDate && d.todLabel === selectedItem.todLabel);
+            }
             if (!match) {
-                match = lastFoundNisarDates.find(d => d.ms < selectedItem.ms);
+                match = verifiedNisarDates.find(d => d.utcDate < selectedItem.utcDate);
             }
             if (match) autoCompareDate = match.utcDate;
         }
         nasaCmpEl.value = autoCompareDate;
+
+        if (verifiedNisarDates.length > 0 && document.getElementById('nasaDatesBox').style.display !== 'none') {
+            renderVerifiedNisarChips(utcDateStr);
+        }
 
         clearNasaDiffMode();
         updateNasaLayer();
     }
 
     // ==========================================
-    // 以下、Sentinel-1 浸水判定・リファイン処理（v3.2完全継承）
+    // 以下、Sentinel-1 浸水判定・リファイン処理（v3.4完全継承）
     // ==========================================
     let floodLayer = null;
     let hasLoadedFloodTiles = false;
