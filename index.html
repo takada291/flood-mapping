@@ -297,7 +297,7 @@
             display: none;
             font-weight: normal;
             line-height: 1.5;
-            max-height: 170px;
+            max-height: 210px;
             overflow-y: auto;
         }
         .obs-chip {
@@ -434,7 +434,7 @@
 <button id="btnShowUi" onclick="toggleUiCollapse()">⚙️ メニュー表示</button>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v3.5</span>
+    <span class="app-title">浸水地図 v3.6</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -546,7 +546,7 @@
         </div>
     </div>
 
-    <!-- 右ペイン: NASA NISAR GCOV（2画面オプション時のみ表示・プルダウン非表示でGCOV固定） -->
+    <!-- 右ペイン: NASA NISAR GCOV（2画面オプション時のみ表示・GCOV固定） -->
     <div id="nasa-pane">
         <div id="nasa-toolbar">
             <span class="nasa-badge-title">🛰️ NISAR(GCOV)</span>
@@ -562,7 +562,7 @@
                 <span>透過</span>
                 <input type="range" id="nasaOpacityRange" min="0.2" max="1.0" step="0.05" value="0.95" oninput="updateNasaOpacity()" style="width: 50px;">
             </label>
-            <button class="nasa-step-btn" id="btnNasaFindDates" onclick="searchNisarDates()" title="基準日の前後（前42日〜後10日）で実際に画像が表示できるNISAR観測日を検証・一覧表示します">🔍 観測日</button>
+            <button class="nasa-step-btn" id="btnNasaFindDates" onclick="searchNisarDates()" title="タイル全体で実際に表示できるNISAR(GCOV)観測日を最大10日分（最大120日前まで遡って）自動検索します">🔍 観測日</button>
             <a id="nasaWorldviewLink" class="nasa-link-btn" href="https://worldview.earthdata.nasa.gov/" target="_blank" rel="noopener" title="現在の場所・日付をNASA Worldviewで開く">🌐 WV</a>
         </div>
         <div id="map-nasa">
@@ -734,7 +734,7 @@
     legend.addTo(map);
 
     // ==========================================
-    // ★v3.5: NASA NISAR(GCOV)固定 ＆ 表示可能日の実タイル検証リストアップ
+    // ★v3.6: NASA NISAR(GCOV)固定 ＆ タイル全体判定による最大10日分自動遡及検索
     // ==========================================
     let isDualMode = false;
     let mapNasa = null;
@@ -897,7 +897,6 @@
         link.href = `https://worldview.earthdata.nasa.gov/?v=${vParam}&t=${dateStr}-T00%3A00%3A00Z&l=${encodeURIComponent(lParam)}`;
     }
 
-    // ★v3.5: NASA GIBS公式WMTSカタログからNISARのGCOVレイヤー（最上位1件）を自動固定取得
     async function loadNasaGcovLayer() {
         const statusEl = document.getElementById('nasaStatusBox');
         statusEl.innerText = "🛰️ NISAR(GCOV): レイヤー情報を取得中...";
@@ -933,7 +932,6 @@
                     template = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${id}/default/{Time}/${tms}/{TileMatrix}/{TileRow}/{TileCol}.${ext}`;
                 }
 
-                // GCOV（Geocoded Polarimetric Covariance）単日レイヤーを最優先
                 let priority = 20;
                 if (upperId.includes('POLARIMETRIC_COVARIANCE') || upperId.includes('GCOV')) {
                     priority = 1;
@@ -1230,8 +1228,8 @@
         }
     }
 
-    // ★v3.5: 画面中心のGIBS実タイルを検証し「本当に映像が表示される日付」だけを判定
-    function checkGibsTileHasData(meta, dateStr, z, tx, ty, localX, localY) {
+    // ★v3.6: 256x256タイル全体をサンプリング検証し、中心が暗い水面や境界付近でも確実に表示可能日を検出
+    function checkGibsTileHasData(meta, dateStr, z, tx, ty) {
         return new Promise((resolve) => {
             const img = new Image();
             img.crossOrigin = 'anonymous';
@@ -1246,25 +1244,23 @@
                     const ctx = cv.getContext('2d', { willReadFrequently: true });
                     ctx.drawImage(img, 0, 0, 256, 256);
 
-                    // 画面中心付近（半径28px＝56x56px範囲）に有効な非透明・非黒ピクセルが十分あるか確認
-                    const x0 = Math.max(0, localX - 28);
-                    const x1 = Math.min(255, localX + 28);
-                    const y0 = Math.max(0, localY - 28);
-                    const y1 = Math.min(255, localY + 28);
-                    const sw = x1 - x0 + 1;
-                    const sh = y1 - y0 + 1;
-                    const data = ctx.getImageData(x0, y0, sw, sh).data;
-
+                    // タイル全体（256x256）を4px間隔（4,096点）で走査
+                    const data = ctx.getImageData(0, 0, 256, 256).data;
                     let validPx = 0;
                     let samplePx = 0;
-                    for (let i = 0; i < data.length; i += 8) {
-                        samplePx++;
-                        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-                        if (a > 100 && (r + g + b) >= 18) {
-                            validPx++;
+                    for (let y = 0; y < 256; y += 4) {
+                        const rowOffset = y * 256 * 4;
+                        for (let x = 0; x < 256; x += 4) {
+                            samplePx++;
+                            const idx = rowOffset + x * 4;
+                            const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
+                            if (a > 60 && (r + g + b) >= 12) {
+                                validPx++;
+                            }
                         }
                     }
-                    resolve(samplePx > 0 && (validPx / samplePx) >= 0.12);
+                    // タイル全体の3%以上に有効ピクセルがあれば表示可能と判定
+                    resolve(samplePx > 0 && (validPx / samplePx) >= 0.03);
                 } catch (e) {
                     resolve(false);
                 }
@@ -1277,7 +1273,7 @@
         });
     }
 
-    // ★v3.5: 基準日の前42日〜後10日を実タイル検証し、確実に表示できるNISAR(GCOV)観測日を複数表示
+    // ★v3.6: 表示可能なNISAR(GCOV)観測日が最大10日分見つかるまで自動で最大120日前まで遡って検証
     async function searchNisarDates() {
         if (!selectedNasaLayerMeta) {
             await loadNasaGcovLayer();
@@ -1293,17 +1289,19 @@
         const baseStr = document.getElementById('targetDateInput').value || formatDateJST(new Date());
         const todayStr = formatDateJST(new Date());
 
-        const startSearchStr = addDaysToDateStr(baseStr, -42);
+        const TARGET_VALID_COUNT = 10;
+        const MAX_BACK_DAYS = 120;
+        const startSearchStr = addDaysToDateStr(baseStr, -MAX_BACK_DAYS);
         let endSearchStr = addDaysToDateStr(baseStr, 10);
         if (endSearchStr > todayStr) endSearchStr = todayStr;
 
         btn.disabled = true;
         btn.innerText = "⏳";
         box.style.display = 'block';
-        box.innerHTML = `🛰️ ${startSearchStr}〜${endSearchStr} の実表示可能なGCOV観測日を検証中...`;
+        box.innerHTML = `🛰️ 最大${TARGET_VALID_COUNT}日分の表示可能なNISAR(GCOV)観測日を検索中...`;
 
         try {
-            // 1. チェック対象の日付リストを作成（新しい順）
+            // 1. 新しい日付から順に最大120日前までの候補日リストを作成
             const candidateDates = [];
             let cur = endSearchStr;
             while (cur >= startSearchStr) {
@@ -1311,11 +1309,11 @@
                 cur = addDaysToDateStr(cur, -1);
             }
 
-            // 2. 裏側でASF DAAC（GCOV絞り込み）から正確な観測時刻・朝夕メタデータを並列取得
+            // 2. 裏側でASF DAAC（GCOV優先・最大250件）から観測時刻・朝夕メタデータを並列取得
             const asfPromise = (async () => {
                 const timeMap = new Map();
                 const fetchAsf = async (extraParam) => {
-                    const url = `https://api.daac.asf.alaska.edu/services/search/param?dataset=NISAR${extraParam}&intersectsWith=${encodeURIComponent(`POINT(${center.lng.toFixed(5)} ${center.lat.toFixed(5)})`)}&start=${startSearchStr}T00:00:00Z&end=${endSearchStr}T23:59:59Z&maxResults=100&output=geojson`;
+                    const url = `https://api.daac.asf.alaska.edu/services/search/param?dataset=NISAR${extraParam}&intersectsWith=${encodeURIComponent(`POINT(${center.lng.toFixed(5)} ${center.lat.toFixed(5)})`)}&start=${startSearchStr}T00:00:00Z&end=${endSearchStr}T23:59:59Z&maxResults=250&output=geojson`;
                     try {
                         const r = await fetch(url);
                         if (!r.ok) return [];
@@ -1341,25 +1339,27 @@
                 return timeMap;
             })();
 
-            // 3. 画面中心点のGIBSタイル座標を計算し、10並列バッチで実在タイルを高速検証
+            // 3. 画面中心を含むGIBSタイル（Z8〜Z10）全体を10日並列バッチで検証し、10日分見つかり次第終了
             const meta = selectedNasaLayerMeta;
-            const checkZoom = Math.min(meta.maxNativeZoom, Math.max(8, Math.min(11, Math.round(mapNasa.getZoom()))));
+            const checkZoom = Math.min(meta.maxNativeZoom, Math.max(8, Math.min(10, Math.round(mapNasa.getZoom()))));
             const pt = mapNasa.project(center, checkZoom);
             const tx = Math.floor(pt.x / 256);
             const ty = Math.floor(pt.y / 256);
-            const localX = Math.floor(pt.x - tx * 256);
-            const localY = Math.floor(pt.y - ty * 256);
 
             const validDates = [];
             const batchSize = 10;
             for (let i = 0; i < candidateDates.length; i += batchSize) {
                 const batch = candidateDates.slice(i, i + batchSize);
                 const results = await Promise.all(
-                    batch.map(dStr => checkGibsTileHasData(meta, dStr, checkZoom, tx, ty, localX, localY).then(ok => ok ? dStr : null))
+                    batch.map(dStr => checkGibsTileHasData(meta, dStr, checkZoom, tx, ty).then(ok => ok ? dStr : null))
                 );
                 results.forEach(d => { if (d) validDates.push(d); });
                 const doneCount = Math.min(i + batchSize, candidateDates.length);
-                box.innerHTML = `🛰️ 実表示可能なNISAR(GCOV)タイルを検証中... (${doneCount}/${candidateDates.length}日・発見: ${validDates.length}日)`;
+                box.innerHTML = `🛰️ タイル全体で表示可能なNISAR(GCOV)を検証中... (${doneCount}/${candidateDates.length}日・発見: ${Math.min(validDates.length, TARGET_VALID_COUNT)}/${TARGET_VALID_COUNT}日)`;
+
+                if (validDates.length >= TARGET_VALID_COUNT) {
+                    break;
+                }
             }
 
             const asfTimeMap = await asfPromise;
@@ -1370,16 +1370,19 @@
                 return;
             }
 
-            // 検証済み日付リストを構築（ASF時刻があれば付与）
-            verifiedNisarDates = validDates.map(utcDate => {
-                const info = asfTimeMap.get(utcDate) || null;
-                return {
-                    utcDate,
-                    ms: info ? info.ms : new Date(`${utcDate}T12:00:00Z`).getTime(),
-                    jstLabel: info ? info.jstLabel : "",
-                    todLabel: info ? info.todLabel : ""
-                };
-            }).sort((a, b) => b.utcDate.localeCompare(a.utcDate));
+            // 新しい順に最大10日分を保持（ASF時刻があれば併記）
+            verifiedNisarDates = validDates
+                .sort((a, b) => b.localeCompare(a))
+                .slice(0, TARGET_VALID_COUNT)
+                .map(utcDate => {
+                    const info = asfTimeMap.get(utcDate) || null;
+                    return {
+                        utcDate,
+                        ms: info ? info.ms : new Date(`${utcDate}T12:00:00Z`).getTime(),
+                        jstLabel: info ? info.jstLabel : "",
+                        todLabel: info ? info.todLabel : ""
+                    };
+                });
 
             // 基準日に最も近い表示可能日を自動選択
             const baseMs = new Date(`${baseStr}T12:00:00+09:00`).getTime();
@@ -1412,12 +1415,12 @@
             <strong style="color:#0b3d91;">✅ 表示可能なNISAR(GCOV)観測日（${verifiedNisarDates.length}日）</strong>
             <span style="cursor:pointer; color:#888; font-weight:bold; padding:0 4px;" onclick="document.getElementById('nasaDatesBox').style.display='none'">✕</span>
         </div>`;
-        verifiedNisarDates.slice(0, 12).forEach(item => {
+        verifiedNisarDates.forEach(item => {
             const selClass = (item.utcDate === activeDateStr) ? " selected" : "";
             const label = item.jstLabel ? `${item.utcDate} [${item.jstLabel}(${item.todLabel})]` : item.utcDate;
             html += `<span class="obs-chip${selClass}" onclick="applyNasaDate('${item.utcDate}')">${label}</span>`;
         });
-        html += `<div style="font-size:10.5px; color:#666; margin-top:3px;">※実タイル検証済み。選択すると最適な過去観測日が自動で「比較前」に入ります</div>`;
+        html += `<div style="font-size:10.5px; color:#666; margin-top:3px;">※タイル全体で実表示を確認済み。選択すると最適な過去観測日が自動で「比較前」に入ります</div>`;
         box.innerHTML = html;
         box.style.display = 'block';
     }
@@ -1428,7 +1431,7 @@
         nasaDateEl.value = utcDateStr;
         nasaDateEl.dataset.userEdited = "1";
 
-        // 検証済みリストから最適な過去観測日（12日前同一時間帯 → 同一時間帯過去 → 直前の検証済み過去日）を自動セット
+        // 検証済みリストから最適な過去観測日（12日前同一時間帯 → 12日前 → 同一時間帯過去 → 直前の検証済み過去日）を自動セット
         const selectedItem = verifiedNisarDates.find(d => d.utcDate === utcDateStr);
         let autoCompareDate = addDaysToDateStr(utcDateStr, -12);
         if (selectedItem && verifiedNisarDates.length > 1) {
@@ -1462,7 +1465,7 @@
     }
 
     // ==========================================
-    // 以下、Sentinel-1 浸水判定・リファイン処理（v3.4完全継承）
+    // 以下、Sentinel-1 浸水判定・リファイン処理（v3.5完全継承）
     // ==========================================
     let floodLayer = null;
     let hasLoadedFloodTiles = false;
