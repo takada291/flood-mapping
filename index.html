@@ -25,6 +25,7 @@
             height: 100dvh; 
             background: #fff; 
             font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            overflow: hidden;
         }
         #controls {
             padding: 8px;
@@ -35,8 +36,100 @@
             z-index: 1000;
             border-bottom: 1px solid #ccc;
             flex-wrap: wrap;
+            flex-shrink: 0;
         }
-        #map { flex-grow: 1; width: 100%; position: relative; }
+
+        /* 1画面 / 2画面レイアウトコンテナ */
+        #map-wrapper {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+            min-height: 0;
+            position: relative;
+        }
+        #sentinel-pane {
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+        }
+        #nasa-pane {
+            flex: 1;
+            position: relative;
+            display: none;
+            flex-direction: column;
+            border-left: 3px solid #0b3d91;
+            min-width: 0;
+            min-height: 0;
+        }
+        #map-wrapper.dual-mode #nasa-pane {
+            display: flex;
+        }
+
+        #map, #map-nasa {
+            flex-grow: 1;
+            width: 100%;
+            position: relative;
+        }
+
+        /* NASA側専用ツールバー */
+        #nasa-toolbar {
+            background: #eef3fb;
+            border-bottom: 1px solid #b8cceb;
+            padding: 5px 8px;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 12px;
+            z-index: 950;
+            flex-shrink: 0;
+        }
+        .nasa-badge-title {
+            font-weight: bold;
+            color: #0b3d91;
+            white-space: nowrap;
+        }
+        .nasa-step-btn {
+            padding: 3px 7px;
+            font-size: 12px;
+            background-color: #0b3d91;
+        }
+        .nasa-step-btn:hover { background-color: #082b68; }
+        .nasa-link-btn {
+            padding: 4px 8px;
+            font-size: 11.5px;
+            background-color: #495057;
+            text-decoration: none;
+            color: #fff;
+            border-radius: 4px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .nasa-link-btn:hover { background-color: #343a40; }
+
+        /* 左ペイン上部ラベル（2画面時のみ表示） */
+        #sentinel-pane-badge {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 52px;
+            z-index: 900;
+            background: rgba(0, 77, 38, 0.88);
+            color: #fff;
+            font-size: 11.5px;
+            font-weight: bold;
+            padding: 3px 9px;
+            border-radius: 12px;
+            pointer-events: none;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+        }
+        #map-wrapper.dual-mode #sentinel-pane-badge {
+            display: block;
+        }
         
         .app-title {
             font-weight: bold;
@@ -85,6 +178,13 @@
         #btnAiSearch { background-color: #6f42c1; }
         #btnAiSearch:hover { background-color: #59339d; }
 
+        #btnDualToggle { background-color: #0b3d91; }
+        #btnDualToggle:hover { background-color: #082b68; }
+        #btnDualToggle.active {
+            background-color: #1e7e34;
+            box-shadow: inset 0 0 0 2px #c3e6cb;
+        }
+
         select, input[type="text"], input[type="password"], input[type="date"] {
             padding: 5px;
             font-size: 12.5px;
@@ -105,7 +205,7 @@
             font-weight: bold;
         }
         
-        #infoPanel {
+        #infoPanel, #nasaInfoPanel {
             position: absolute;
             bottom: 30px;
             right: 10px;
@@ -115,23 +215,56 @@
             gap: 5px;
             pointer-events: none; 
             align-items: flex-end;
+            max-width: calc(100% - 20px);
         }
 
         .info-box {
-            font-size: 12.5px; 
+            font-size: 12px; 
             font-weight: bold;
             color: #d32f2f;
-            background: rgba(255, 255, 255, 0.92);
+            background: rgba(255, 255, 255, 0.93);
             padding: 5px 10px;
             border-radius: 12px;
             border: 1px solid #ccc;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
             white-space: nowrap;
-            pointer-events: auto; 
+            pointer-events: auto;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         #rainDisplay {
             color: #0056b3; 
+        }
+        #nasaStatusBox {
+            color: #0b3d91;
+            border-color: #b8cceb;
+        }
+        #nasaDatesBox {
+            color: #333;
+            background: rgba(255, 255, 255, 0.95);
+            border-color: #0b3d91;
+            white-space: normal;
+            display: none;
+            font-weight: normal;
+            line-height: 1.5;
+        }
+        .obs-chip {
+            display: inline-block;
+            margin: 2px 3px 2px 0;
+            padding: 2px 7px;
+            background: #e7f0ff;
+            color: #0b3d91;
+            border: 1px solid #8fb3ea;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .obs-chip:hover {
+            background: #0b3d91;
+            color: #fff;
         }
 
         /* リファイン結果パネル */
@@ -141,7 +274,7 @@
             right: 55px;
             z-index: 1000;
             width: 315px;
-            max-width: calc(100vw - 80px);
+            max-width: calc(100% - 75px);
             background: rgba(255, 255, 255, 0.96);
             border: 2px solid #007bff;
             border-radius: 8px;
@@ -224,12 +357,23 @@
         }
         .crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
         .crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+
+        /* スマホ等縦長画面では2画面を上下分割に切替 */
+        @media (max-width: 768px) {
+            #map-wrapper.dual-mode {
+                flex-direction: column;
+            }
+            #map-wrapper.dual-mode #nasa-pane {
+                border-left: none;
+                border-top: 3px solid #0b3d91;
+            }
+        }
     </style>
 </head>
 <body>
 
 <div id="controls">
-    <span class="app-title">浸水地図 v3.2</span>
+    <span class="app-title">浸水地図 v3.3</span>
 
     <select id="prefSelect" onchange="changePref()">
         <option value="43.064,141.347">北海道</option>
@@ -281,14 +425,14 @@
         <option value="26.212,127.681">沖縄県</option>
     </select>
     
-    <input type="password" id="geminiApiKey" placeholder="Gemini APIキー" style="width: 110px;">
-    <input type="text" id="aiSearchInput" placeholder="県+市や地名" onkeypress="handleAiSearchEnter(event)" style="width: 140px;">
+    <input type="password" id="geminiApiKey" placeholder="Gemini APIキー" style="width: 105px;">
+    <input type="text" id="aiSearchInput" placeholder="県+市や地名" onkeypress="handleAiSearchEnter(event)" style="width: 130px;">
     <button id="btnAiSearch" onclick="searchWithGemini()">🤖 検索</button>
     <button id="btnGps" onclick="getLocation()">🎯 現在地</button>
 
     <div class="filter-group" title="指定した日付以前（日本時間23:59まで）の最新SAR観測データと、同一軌道12日前のデータを比較します">
         <span style="font-size: 11px;">📅</span>
-        <input type="date" id="targetDateInput" style="border: none; padding: 1px 2px; font-size: 12px; font-weight: bold;">
+        <input type="date" id="targetDateInput" onchange="onMainDateChange()" style="border: none; padding: 1px 2px; font-size: 12px; font-weight: bold;">
     </div>
 
     <select id="displayModeSelect" onchange="onDisplayModeChange()" title="浸水判定（赤・オレンジ・青）と、RGB変化カラー合成（赤＝暗化・シアン＝明化）を切り替えます">
@@ -313,23 +457,58 @@
     <button id="btnFloodRefine" onclick="refineForLowland()" disabled title="水域標高から基準水位を推定し、高台・台地のノイズと細かい砂嵐を除去します">💧 浸水リファイン</button>
     <button id="btnRefine" onclick="refineForMountain()" disabled title="平地・緩斜面を除外し、山地・谷部の変化シグナルを抽出します（感度「中」「高」で有効）">⛰️ 山地リファイン</button>
     <button id="btnResetRefine" onclick="toggleRefineView()">↩️ 元に戻す</button>
+
+    <!-- ★v3.3: オプション2画面切替ボタン -->
+    <button id="btnDualToggle" onclick="toggleDualScreen()" title="Sentinel-1とNASA SAR（NISAR/OPERA）を2画面で連動表示します">🛰️ 2画面(NASA)</button>
 </div>
 
-<div id="map">
-    <div class="crosshair"></div>
+<div id="map-wrapper">
+    <!-- 左ペイン: Sentinel-1（メイン） -->
+    <div id="sentinel-pane">
+        <div id="sentinel-pane-badge">🛰️ Sentinel-1 (Cバンド・2時期変化)</div>
+        <div id="map">
+            <div class="crosshair"></div>
 
-    <!-- リファイン結果パネル -->
-    <div id="aiRefinePanel">
-        <div class="refine-header" id="refineHeaderTitle">
-            <span id="refineTitleText">✨ リファイン結果</span>
-            <span class="refine-close" onclick="document.getElementById('aiRefinePanel').style.display='none'">✕</span>
+            <!-- リファイン結果パネル -->
+            <div id="aiRefinePanel">
+                <div class="refine-header" id="refineHeaderTitle">
+                    <span id="refineTitleText">✨ リファイン結果</span>
+                    <span class="refine-close" onclick="document.getElementById('aiRefinePanel').style.display='none'">✕</span>
+                </div>
+                <div id="refineStatsBox" class="refine-stats"></div>
+            </div>
+            
+            <div id="infoPanel">
+                <div id="rainDisplay" class="info-box" style="display: none;">🌧️ 観測前3日間の雨量: 未取得</div>
+                <div id="obsDateDisplay" class="info-box">🛰️ SAR観測日時: 未取得</div>
+            </div>
         </div>
-        <div id="refineStatsBox" class="refine-stats"></div>
     </div>
-    
-    <div id="infoPanel">
-        <div id="rainDisplay" class="info-box" style="display: none;">🌧️ 観測前3日間の雨量: 未取得</div>
-        <div id="obsDateDisplay" class="info-box">🛰️ SAR観測日時: 未取得</div>
+
+    <!-- 右ペイン: NASA SAR（2画面オプション時のみ表示） -->
+    <div id="nasa-pane">
+        <div id="nasa-toolbar">
+            <span class="nasa-badge-title">🛰️ NASA SAR (GIBS)</span>
+            <button class="nasa-step-btn" onclick="stepNasaDate(-1)" title="1日前へ">◀</button>
+            <input type="date" id="nasaDateInput" onchange="updateNasaLayer()" style="padding: 2px 4px; font-size: 12px; font-weight: bold;">
+            <button class="nasa-step-btn" onclick="stepNasaDate(1)" title="1日後へ">▶</button>
+            <select id="nasaLayerSelect" onchange="updateNasaLayer()" style="max-width: 210px; font-size: 11.5px; padding: 3px 5px;">
+                <option value="">レイヤー一覧を取得中...</option>
+            </select>
+            <label style="display:flex; align-items:center; gap:3px; font-weight:bold; color:#333;">
+                <span>透過:</span>
+                <input type="range" id="nasaOpacityRange" min="0.2" max="1.0" step="0.05" value="0.85" oninput="updateNasaOpacity()" style="width: 60px;">
+            </label>
+            <button class="nasa-step-btn" id="btnNasaFindDates" onclick="searchNisarDates()" title="現在地周辺でNISARが撮影した日付（指定日以前）を自動検索します">🔍 観測日</button>
+            <a id="nasaWorldviewLink" class="nasa-link-btn" href="https://worldview.earthdata.nasa.gov/" target="_blank" rel="noopener" title="現在の場所・日付をNASA Worldviewで開く">🌐 Worldview</a>
+        </div>
+        <div id="map-nasa">
+            <div class="crosshair"></div>
+            <div id="nasaInfoPanel">
+                <div id="nasaDatesBox" class="info-box"></div>
+                <div id="nasaStatusBox" class="info-box">🛰️ NASA GIBS: 待機中</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -362,9 +541,12 @@
 
     function initDateInput() {
         const dateInput = document.getElementById('targetDateInput');
+        const nasaDateInput = document.getElementById('nasaDateInput');
         const todayJst = formatDateJST(new Date());
         dateInput.value = todayJst;
         dateInput.max = todayJst;
+        nasaDateInput.value = todayJst;
+        nasaDateInput.max = todayJst;
     }
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -459,6 +641,364 @@
     };
     legend.addTo(map);
 
+    // ==========================================
+    // ★v3.3 新機能: NASA SAR (GIBS) 2画面表示 ＆ 左右マップ連動制御
+    // ==========================================
+    let isDualMode = false;
+    let mapNasa = null;
+    let nasaTileLayer = null;
+    let isSyncingMaps = false;
+    let gibsLayersLoaded = false;
+    let gibsLayerRegistry = [];
+
+    function initNasaMapIfNeeded() {
+        if (mapNasa) return;
+
+        mapNasa = L.map('map-nasa', { preferCanvas: true, zoomControl: false })
+            .setView(map.getCenter(), map.getZoom());
+        L.control.scale({ imperial: false, metric: true, position: 'bottomleft' }).addTo(mapNasa);
+
+        const paleN = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', opt);
+        const stdN = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', opt);
+        const photoN = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', opt);
+        const esriN = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', optEsri);
+        paleN.addTo(mapNasa);
+
+        L.control.layers({
+            "淡色地図": paleN,
+            "標準地図": stdN,
+            "最新空中写真": photoN,
+            "衛星画像（Esri）": esriN
+        }, null, { collapsed: true }).addTo(mapNasa);
+
+        // 左（Sentinel） ⇄ 右（NASA）のパン・ズーム相互同期
+        map.on('move', () => {
+            if (!isDualMode || !mapNasa || isSyncingMaps) return;
+            isSyncingMaps = true;
+            mapNasa.setView(map.getCenter(), map.getZoom(), { animate: false });
+            isSyncingMaps = false;
+        });
+        map.on('moveend', updateNasaWorldviewLink);
+
+        mapNasa.on('move', () => {
+            if (!isDualMode || isSyncingMaps) return;
+            isSyncingMaps = true;
+            map.setView(mapNasa.getCenter(), mapNasa.getZoom(), { animate: false });
+            isSyncingMaps = false;
+        });
+        mapNasa.on('moveend', updateNasaWorldviewLink);
+    }
+
+    function toggleDualScreen() {
+        const wrapper = document.getElementById('map-wrapper');
+        const btn = document.getElementById('btnDualToggle');
+        isDualMode = !isDualMode;
+
+        if (isDualMode) {
+            wrapper.classList.add('dual-mode');
+            btn.classList.add('active');
+            btn.innerText = "🖥️ 1画面に戻す";
+
+            initNasaMapIfNeeded();
+
+            // 基準日がまだNASA側へ未設定なら同期
+            const mainDate = document.getElementById('targetDateInput').value;
+            const nasaDateEl = document.getElementById('nasaDateInput');
+            if (mainDate && !nasaDateEl.dataset.userEdited) {
+                nasaDateEl.value = mainDate;
+            }
+
+            setTimeout(() => {
+                map.invalidateSize();
+                mapNasa.invalidateSize();
+                isSyncingMaps = true;
+                mapNasa.setView(map.getCenter(), map.getZoom(), { animate: false });
+                isSyncingMaps = false;
+                updateNasaWorldviewLink();
+            }, 80);
+
+            if (!gibsLayersLoaded) {
+                loadNasaGibsSarLayers();
+            } else {
+                updateNasaLayer();
+            }
+        } else {
+            wrapper.classList.remove('dual-mode');
+            btn.classList.remove('active');
+            btn.innerText = "🛰️ 2画面(NASA)";
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 80);
+        }
+    }
+
+    function onMainDateChange() {
+        const mainDate = document.getElementById('targetDateInput').value;
+        const nasaDateEl = document.getElementById('nasaDateInput');
+        if (mainDate) {
+            nasaDateEl.value = mainDate;
+            delete nasaDateEl.dataset.userEdited;
+            if (isDualMode && gibsLayersLoaded) {
+                updateNasaLayer();
+            }
+        }
+    }
+
+    function stepNasaDate(deltaDays) {
+        const nasaDateEl = document.getElementById('nasaDateInput');
+        if (!nasaDateEl.value) return;
+        const d = new Date(`${nasaDateEl.value}T12:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + deltaDays);
+        const nextStr = d.toISOString().split('T')[0];
+        const maxStr = nasaDateEl.max || formatDateJST(new Date());
+        if (nextStr > maxStr) return;
+        nasaDateEl.value = nextStr;
+        nasaDateEl.dataset.userEdited = "1";
+        updateNasaLayer();
+    }
+
+    function updateNasaOpacity() {
+        const val = parseFloat(document.getElementById('nasaOpacityRange').value);
+        if (nasaTileLayer) nasaTileLayer.setOpacity(val);
+    }
+
+    function updateNasaWorldviewLink() {
+        const link = document.getElementById('nasaWorldviewLink');
+        if (!link) return;
+        const dateStr = document.getElementById('nasaDateInput').value || formatDateJST(new Date());
+        const b = map.getBounds();
+        const vParam = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
+        const selectedId = document.getElementById('nasaLayerSelect').value;
+        const lParam = selectedId ? `Reference_Labels_15m,Reference_Features_15m,${selectedId}` : `Reference_Labels_15m,Reference_Features_15m`;
+        link.href = `https://worldview.earthdata.nasa.gov/?v=${vParam}&t=${dateStr}-T00%3A00%3A00Z&l=${encodeURIComponent(lParam)}`;
+    }
+
+    // NASA GIBS公式WMTSカタログからNISARおよびOPERA(SAR)レイヤーの正確なIDとURLテンプレートを自動取得
+    async function loadNasaGibsSarLayers() {
+        const statusEl = document.getElementById('nasaStatusBox');
+        const selectEl = document.getElementById('nasaLayerSelect');
+        statusEl.innerText = "🛰️ NASA GIBS: NISAR/SARレイヤーを検索中...";
+        selectEl.innerHTML = `<option value="">検索中...</option>`;
+
+        try {
+            const resp = await fetch('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/1.0.0/WMTSCapabilities.xml');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const xmlText = await resp.text();
+
+            const layerMatches = xmlText.match(/<Layer>[\s\S]*?<\/Layer>/g) || [];
+            const found = [];
+
+            for (const block of layerMatches) {
+                const idMatch = block.match(/<ows:Identifier>([^<]+)<\/ows:Identifier>/);
+                if (!idMatch) continue;
+                const id = idMatch[1].trim();
+                const upperId = id.toUpperCase();
+
+                // NISAR または NASA OPERA(SAR系) を抽出
+                const isNisar = upperId.includes('NISAR');
+                const isOperaSar = upperId.includes('OPERA') && (upperId.includes('DSWX') || upperId.includes('RTC') || upperId.includes('S1') || upperId.includes('DIST'));
+                if (!isNisar && !isOperaSar) continue;
+
+                const titleMatch = block.match(/<ows:Title>([^<]+)<\/ows:Title>/);
+                const title = titleMatch ? titleMatch[1].trim() : id;
+
+                const tmsMatch = block.match(/<TileMatrixSet>(GoogleMapsCompatible_Level\d+)<\/TileMatrixSet>/);
+                const tms = tmsMatch ? tmsMatch[1] : 'GoogleMapsCompatible_Level9';
+                const levelMatch = tms.match(/Level(\d+)/i);
+                const maxNativeZoom = levelMatch ? parseInt(levelMatch[1], 10) : 9;
+
+                const resMatch = block.match(/<ResourceURL[^>]+resourceType="tile"[^>]+template="([^"]+)"/);
+                let template = resMatch ? resMatch[1] : "";
+                if (!template) {
+                    const fmtMatch = block.match(/<Format>image\/(png|jpeg)<\/Format>/i);
+                    const ext = (fmtMatch && fmtMatch[1].toLowerCase() === 'jpeg') ? 'jpg' : 'png';
+                    template = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${id}/default/{Time}/${tms}/{TileMatrix}/{TileRow}/{TileCol}.${ext}`;
+                }
+
+                // 優先順位スコア（NISARのGCOV/RGBを最優先、次にその他NISAR、次にOPERA浸水/後方散乱）
+                let priority = 50;
+                if (isNisar) {
+                    priority = 10;
+                    if (upperId.includes('RGB') || upperId.includes('FALSE') || upperId.includes('GCOV')) priority = 1;
+                    else if (upperId.includes('HH')) priority = 5;
+                } else if (upperId.includes('DSWX_S1') || upperId.includes('DSWX-S1')) {
+                    priority = 20;
+                } else if (upperId.includes('RTC')) {
+                    priority = 25;
+                }
+
+                found.push({ id, title, tms, maxNativeZoom, template, isNisar, priority });
+            }
+
+            found.sort((a, b) => (a.priority - b.priority) || a.id.localeCompare(b.id));
+            gibsLayerRegistry = found;
+
+            selectEl.innerHTML = "";
+            if (found.length > 0) {
+                found.forEach(item => {
+                    const optEl = document.createElement('option');
+                    optEl.value = item.id;
+                    const prefix = item.isNisar ? "★NISAR: " : "OPERA: ";
+                    const shortName = item.id.replace(/^NISAR_/i, '').replace(/^OPERA_L3_/i, '');
+                    optEl.text = `${prefix}${shortName} (Z${item.maxNativeZoom})`;
+                    optEl.title = item.title;
+                    selectEl.add(optEl);
+                });
+                gibsLayersLoaded = true;
+                updateNasaLayer();
+            } else {
+                throw new Error("GIBSカタログ内にNISAR/OPERAレイヤーが見つかりませんでした");
+            }
+        } catch (err) {
+            console.warn("NASA GIBS Capabilities取得エラー:", err);
+            // フォールバック候補（GIBS標準OPERA/NISAR系）
+            gibsLayerRegistry = [
+                {
+                    id: "OPERA_L3_DSWX-S1_PROVISIONAL_V1",
+                    title: "OPERA Surface Water (Sentinel-1)",
+                    tms: "GoogleMapsCompatible_Level13",
+                    maxNativeZoom: 13,
+                    template: "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/OPERA_L3_DSWX-S1_PROVISIONAL_V1/default/{Time}/GoogleMapsCompatible_Level13/{TileMatrix}/{TileRow}/{TileCol}.png",
+                    isNisar: false
+                }
+            ];
+            selectEl.innerHTML = `<option value="OPERA_L3_DSWX-S1_PROVISIONAL_V1">OPERA: DSWX-S1 (フォールバック)</option>`;
+            gibsLayersLoaded = true;
+            statusEl.innerText = `⚠️ カタログ自動取得失敗 (${err.message})`;
+            updateNasaLayer();
+        }
+    }
+
+    function updateNasaLayer() {
+        if (!mapNasa) return;
+        const selectedId = document.getElementById('nasaLayerSelect').value;
+        const dateStr = document.getElementById('nasaDateInput').value || formatDateJST(new Date());
+        const opacity = parseFloat(document.getElementById('nasaOpacityRange').value);
+        const statusEl = document.getElementById('nasaStatusBox');
+
+        if (nasaTileLayer) {
+            mapNasa.removeLayer(nasaTileLayer);
+            nasaTileLayer = null;
+        }
+
+        const meta = gibsLayerRegistry.find(l => l.id === selectedId);
+        if (!meta) {
+            statusEl.innerText = "🛰️ NASA GIBS: レイヤー未選択";
+            return;
+        }
+
+        const tileUrl = meta.template
+            .replace('{Time}', dateStr)
+            .replace('{TileMatrixSet}', meta.tms)
+            .replace('{TileMatrix}', '{z}')
+            .replace('{TileRow}', '{y}')
+            .replace('{TileCol}', '{x}');
+
+        nasaTileLayer = L.tileLayer(tileUrl, {
+            maxZoom: 18,
+            maxNativeZoom: meta.maxNativeZoom,
+            opacity: opacity,
+            crossOrigin: 'anonymous',
+            attribution: 'NASA GIBS / NISAR'
+        });
+
+        let loadedTiles = 0;
+        let errorTiles = 0;
+        nasaTileLayer.on('tileload', () => {
+            loadedTiles++;
+            statusEl.innerText = `🛰️ NASA [${dateStr}] ${meta.id} (表示中)`;
+        });
+        nasaTileLayer.on('tileerror', () => {
+            errorTiles++;
+            if (loadedTiles === 0) {
+                statusEl.innerText = `🛰️ NASA [${dateStr}] この日の観測タイルなし（◀▶または🔍観測日で切替）`;
+            }
+        });
+
+        nasaTileLayer.addTo(mapNasa);
+        statusEl.innerText = `🛰️ NASA [${dateStr}] タイル読込中...`;
+        updateNasaWorldviewLink();
+    }
+
+    // ASF DAAC Search API（認証不要）を使って、画面中心のNISAR観測日を検索
+    async function searchNisarDates() {
+        const btn = document.getElementById('btnNasaFindDates');
+        const box = document.getElementById('nasaDatesBox');
+        const center = map.getCenter();
+        const endStr = document.getElementById('nasaDateInput').value || formatDateJST(new Date());
+
+        btn.disabled = true;
+        btn.innerText = "⏳ 検索中...";
+        box.style.display = 'block';
+        box.innerHTML = "🛰️ ASF DAACで現在地周辺のNISAR観測日を検索しています...";
+
+        const queryAsf = async (paramName) => {
+            const url = `https://api.daac.asf.alaska.edu/services/search/param?${paramName}=NISAR&intersectsWith=${encodeURIComponent(`POINT(${center.lng.toFixed(5)} ${center.lat.toFixed(5)})`)}&end=${endStr}T23:59:59Z&maxResults=12&output=geojson`;
+            const res = await fetch(url);
+            if (!res.ok) return [];
+            const geojson = await res.json();
+            return geojson.features || [];
+        };
+
+        try {
+            let features = await queryAsf('dataset');
+            if (features.length === 0) {
+                features = await queryAsf('platform');
+            }
+
+            if (features.length === 0) {
+                box.innerHTML = `<strong>NISAR観測日（${endStr}以前）:</strong><br>この地点の公開シーンが見つかりませんでした。基準日をずらすか、◀▶ボタンで確認してください。`;
+                return;
+            }
+
+            // ユニークなUTC日付（GIBS表示用）とJST日時を抽出
+            const seenDates = new Map();
+            for (const f of features) {
+                const startTime = f.properties && (f.properties.startTime || f.properties.stopTime);
+                if (!startTime) continue;
+                const dt = new Date(startTime);
+                const utcDate = dt.toISOString().split('T')[0];
+                if (!seenDates.has(utcDate)) {
+                    const orbitDir = (f.properties.flightDirection || "").toUpperCase();
+                    const dirTag = orbitDir === "ASCENDING" ? "夕" : (orbitDir === "DESCENDING" ? "朝" : "");
+                    seenDates.set(utcDate, { utcDate, jstLabel: formatShortDateTimeJST(dt), dirTag });
+                }
+            }
+
+            const list = Array.from(seenDates.values()).sort((a, b) => b.utcDate.localeCompare(a.utcDate)).slice(0, 6);
+            let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                <strong style="color:#0b3d91;">📅 NISAR観測日（クリックで表示）</strong>
+                <span style="cursor:pointer; color:#888; font-weight:bold; padding:0 4px;" onclick="document.getElementById('nasaDatesBox').style.display='none'">✕</span>
+            </div>`;
+            list.forEach(item => {
+                const tag = item.dirTag ? `(${item.dirTag})` : "";
+                html += `<span class="obs-chip" onclick="applyNasaDate('${item.utcDate}')">${item.utcDate} [${item.jstLabel}${tag}]</span>`;
+            });
+            box.innerHTML = html;
+
+            // 最も近い最新観測日を自動適用
+            if (list.length > 0) {
+                applyNasaDate(list[0].utcDate);
+            }
+        } catch (e) {
+            console.error(e);
+            box.innerHTML = `⚠️ NISAR観測日の検索に失敗しました（${e.message}）。◀▶ボタンで日付を手動変更してください。`;
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "🔍 観測日";
+        }
+    }
+
+    function applyNasaDate(utcDateStr) {
+        const nasaDateEl = document.getElementById('nasaDateInput');
+        nasaDateEl.value = utcDateStr;
+        nasaDateEl.dataset.userEdited = "1";
+        updateNasaLayer();
+    }
+
+    // ==========================================
+    // 以下、Sentinel-1 浸水判定・リファイン処理（v3.2完全継承）
+    // ==========================================
     let floodLayer = null;
     let hasLoadedFloodTiles = false;
     let lastDisplayMode = 'flood';
@@ -605,7 +1145,6 @@
             permWaterVV = 0.030;
         }
 
-        // ★v3.2: 同一軌道12日周期ペアリング許容幅を +/-0.2日 に厳密化（朝・夕の混在防止）
         const pairFindingCode = `
 function toDb(v) {
     return 4.342944819 * Math.log(Math.max(v, 0.0001));
@@ -706,14 +1245,12 @@ function evaluatePixel(samples, scenes) {
     var hasVH = (typeof latest.VH === "number" && latest.VH > 0 && typeof past.VH === "number" && past.VH > 0);
     var diffVH = hasVH ? (toDb(latest.VH) - toDb(past.VH)) : 0.0;
 
-    // 1. Definite water darkening (VV) -> Red
     var condVV = (diffVV <= ${dbDropVV}) && (latest.VV < ${maxLatestVV});
     var condAbs = waterLatestPerm && (past.VV >= permWaterVV * 1.8);
     if (condVV || condAbs) {
         return [1, 0, 0, 0.80];
     }
 
-    // 2. Shallow / vegetated inundation candidate (VH) -> Orange
     var condVH = hasVH && (diffVH <= ${dbDropVH}) && (latest.VH < ${maxLatestVH}) && (latest.VV < ${vhMaxLatestVV}) && (diffVV <= ${vhMinDropVV});
     if (condVH) {
         return [1, 0.55, 0, 0.72];
@@ -762,6 +1299,11 @@ function evaluatePixel(samples, scenes) {
         });
         
         updateObservationDate(map.getBounds(), targetEndDate, timeRangeStart);
+
+        // 2画面モード中でNASA側日付が個別編集されていなければ表示も更新
+        if (isDualMode && gibsLayersLoaded) {
+            updateNasaLayer();
+        }
     }
 
     // ==========================================
@@ -912,7 +1454,6 @@ function evaluatePixel(samples, scenes) {
         return canvas;
     }
 
-    // 共通ピクセル色分類: 0=無, 1=赤(VV確実水面), 2=青(常時水域), 3=オレンジ(VH浅い浸水)
     function classifyPixels(floodCanvas) {
         const w = floodCanvas.width;
         const h = floodCanvas.height;
@@ -925,11 +1466,11 @@ function evaluatePixel(samples, scenes) {
             const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
             if (a > 40) {
                 if (b > 150 && r < 100 && g < 100) {
-                    grid[i] = 2; // 青
+                    grid[i] = 2;
                 } else if (r > 160 && g < 85 && b < 85) {
-                    grid[i] = 1; // 赤
+                    grid[i] = 1;
                 } else if (r > 160 && g >= 85 && g < 205 && b < 85) {
-                    grid[i] = 3; // オレンジ
+                    grid[i] = 3;
                 }
             }
         }
@@ -963,7 +1504,7 @@ function evaluatePixel(samples, scenes) {
     }
 
     // ==========================================
-    // ★v3.2: 💧 浸水リファイン（VH浅い冠水候補の面積・近傍閾値を調整し0箇所化を防止）
+    // 💧 浸水リファイン（低地抽出・台地カット・砂嵐除去）
     // ==========================================
     async function refineForLowland() {
         if (!floodLayer || !hasLoadedFloodTiles || lastDisplayMode !== 'flood') {
@@ -989,7 +1530,6 @@ function evaluatePixel(samples, scenes) {
             const { grid } = classifyPixels(rawFloodCanvas);
             const { screenEle, screenSlope } = terrain;
 
-            // 1. シーン内の「もとからの水域(青)」の標高をサンプリングし、基準水位(下位30%点)を自動推定
             const waterEles = [];
             for (let i = 0; i < totalPx; i += 2) {
                 if (grid[i] === 2) {
@@ -1015,7 +1555,6 @@ function evaluatePixel(samples, scenes) {
 
             const maxFloodEle = baseWaterLevel + 12.0;
 
-            // 2. 高台・台地・急斜面の赤/オレンジを事前カット
             const filteredGrid = new Uint8Array(totalPx);
             for (let i = 0; i < totalPx; i++) {
                 const t = grid[i];
@@ -1030,7 +1569,6 @@ function evaluatePixel(samples, scenes) {
                 }
             }
 
-            // 3. 3x3近傍密度フィルタ（オレンジの浅い冠水は細く点在しやすいため3px以上、赤・青は4px以上で残す）
             const cleanedGrid = new Uint8Array(totalPx);
             for (let y = 1; y < h - 1; y++) {
                 for (let x = 1; x < w - 1; x++) {
@@ -1054,7 +1592,6 @@ function evaluatePixel(samples, scenes) {
                 }
             }
 
-            // 4. 連結成分ラベリング（面積・平均標高チェック）
             const visited = new Uint8Array(totalPx);
             const queue = new Int32Array(totalPx);
             const survivingClusters = [];
@@ -1065,7 +1602,6 @@ function evaluatePixel(samples, scenes) {
 
             const sens = getSelectedSensitivity();
             const minRedArea = sens === 'high' ? 35 : (sens === 'mid' ? 24 : 16);
-            // ★v3.2: オレンジ(VH浅い冠水)の最小面積を緩和し、干拓地の縁や水田の冠水が消えすぎないよう調整
             const minOrangeArea = sens === 'high' ? 20 : (sens === 'mid' ? 14 : 10);
             const minBlueArea = 18;
 
@@ -1322,7 +1858,6 @@ function evaluatePixel(samples, scenes) {
         }
     }
 
-    // ★v3.2: 比較日時検索の同一軌道許容幅も +/-0.2日 に厳密化
     async function updateObservationDate(bounds, targetEndDate, timeRangeStart) {
         if (!bounds) return;
         document.getElementById('obsDateDisplay').innerText = `🛰️ SAR観測日時: 取得中...`;
